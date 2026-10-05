@@ -76,6 +76,8 @@ Läuft `cloudflared` selbst als Container, darf als URL nicht `localhost` stehen
 
 Über den Tunnel ist die Anmeldeseite aus dem ganzen Internet erreichbar. Schalte deshalb Cloudflare Access davor: Zero Trust, Access, Applications, eine Self-hosted-Anwendung für denselben Hostnamen mit einer Allow-Policy für die E-Mail-Adressen, die hineindürfen.
 
+Damit das App-Icon auch mit Access auf dem Startbildschirm landet, lege eine zweite Self-hosted-Anwendung für die Pfade `manifest.webmanifest` und `img/*` desselben Hostnamens an, mit einer Policy `Bypass` für `Everyone`. Freigegeben sind damit nur das Manifest und die Icons.
+
 ### Ohne Reverse Proxy zum Ausprobieren
 
 Mit `BASE_URL=http://<IP>:8093` lässt sich die App direkt über HTTP aufrufen. Für den Dauerbetrieb ist das nicht gedacht.
