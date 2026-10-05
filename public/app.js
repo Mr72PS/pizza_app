@@ -349,7 +349,7 @@ function viewRecipeForm(){
 }
 
 /* ---------- Anmeldung und Konto ---------- */
-const FEHLER={login:'Benutzername oder Passwort stimmt nicht.',locked:'Dieses Konto ist nach zu vielen Fehlversuchen für 15 Minuten gesperrt.',exists:'Diesen Benutzernamen gibt es schon.',current:'Das aktuelle Passwort stimmt nicht.',self:'Das geht beim eigenen Konto nicht.',lastadmin:'Es muss mindestens ein aktiver Admin bleiben.'};
+const FEHLER={origin:'Die Adresse im Browser passt nicht zur Einstellung BASE_URL des Servers. Trage dort genau die Adresse ein, unter der du die App aufrufst.',login:'Benutzername oder Passwort stimmt nicht.',locked:'Dieses Konto ist nach zu vielen Fehlversuchen für 15 Minuten gesperrt.',exists:'Diesen Benutzernamen gibt es schon.',current:'Das aktuelle Passwort stimmt nicht.',self:'Das geht beim eigenen Konto nicht.',lastadmin:'Es muss mindestens ein aktiver Admin bleiben.'};
 const fehlerTxt=r=>FEHLER[r.data&&r.data.error]||(r.status===429?'Zu viele Versuche. Bitte versuche es später nochmals.':r.status===400?'Die Eingabe ist ungültig. Das Passwort braucht mindestens 8 Zeichen.':'Das hat nicht geklappt.');
 const msgBox=()=>ui.msg?`<p class="note" style="margin:0 0 6px">${esc(ui.msg)}</p>`:'';
 

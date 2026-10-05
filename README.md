@@ -41,16 +41,44 @@ Das Image ist öffentlich, zum Ziehen braucht es keine Anmeldung an ghcr.io.
 | `PORT` | Port auf dem Host, Standard `8093`. |
 | `PUID`, `PGID` | Benutzer und Gruppe, unter denen der Container läuft. Müssen dem Besitzer des Ordners `data` entsprechen. Auf der Synology per SSH mit `id` nachsehen. |
 
+Alle Werte gehören in die `.env` beziehungsweise in die Stack-Variablen. Die Compose-Datei setzt sie von dort ein. Das gilt auch für `PUID` und `PGID`: Unter `environment:` eingetragen bleiben sie ohne Wirkung, weil sie die Zeile `user:` steuern und nicht von der App gelesen werden.
+
+### Schreibrechte auf den Datenordner
+
+Steht im Log «Pizza App kann nicht in /data schreiben», gehört der Ordner `data` einem anderen Benutzer als dem, unter dem der Container läuft. Das passiert vor allem, wenn Docker den Ordner beim ersten Start selbst angelegt hat. Abhilfe per SSH, mit den Zahlen aus `id`:
+
+```bash
+sudo chown -R 1026:100 /volume1/docker/pizza_app/data
+```
+
+Danach `PUID=1026` und `PGID=100` in den Stack-Variablen setzen und neu starten. In Dockhand und Portainer lohnt es sich, in der Compose-Datei statt `./data` den vollen Pfad einzutragen, zum Beispiel `/volume1/docker/pizza_app/data:/data`.
+
 ## Reverse Proxy
 
-Die App erwartet HTTPS vom Reverse Proxy: Das Sitzungs-Cookie ist als `Secure` markiert und wird über reines HTTP nicht zurückgeschickt.
+Die App erwartet HTTPS vom Reverse Proxy: Das Sitzungs-Cookie ist als `Secure` markiert und wird über reines HTTP nicht zurückgeschickt. `BASE_URL` muss genau der Adresse entsprechen, die du im Browser eingibst (Protokoll, Hostname, Port), sonst lehnt die App das Anmelden ab. Besondere Header oder WebSockets braucht es nicht.
 
-Auf der Synology unter Systemsteuerung, Anmeldeportal, Erweitert, Reverse Proxy:
+### Variante A: Reverse Proxy der Synology, nur im Heimnetz
+
+Unter Systemsteuerung, Anmeldeportal, Erweitert, Reverse Proxy:
 
 - Quelle: HTTPS, dein Hostname (derselbe wie in `BASE_URL`), Port 443
 - Ziel: HTTP, `localhost`, Port 8093
 
-Besondere Header oder WebSockets braucht es nicht. `BASE_URL` muss genau der Adresse entsprechen, die du im Browser eingibst, sonst schlägt das Anmelden mit «Das hat nicht geklappt» fehl.
+### Variante B: Cloudflare Tunnel, auch von unterwegs
+
+Voraussetzung ist ein laufender Tunnel (`cloudflared`) und eine Domain bei Cloudflare.
+
+1. Im Cloudflare-Dashboard unter Zero Trust, Networks, Tunnels den Tunnel öffnen und einen öffentlichen Hostnamen hinzufügen.
+2. Subdomain und Domain wählen, zum Beispiel `pizza.example.com`. Service Type `HTTP`, URL `<IP des Servers im Heimnetz>:8093`.
+3. `BASE_URL=https://pizza.example.com` und `TRUST_PROXY=true` setzen, Stack neu starten.
+
+Läuft `cloudflared` selbst als Container, darf als URL nicht `localhost` stehen: Das wäre der Tunnel-Container und nicht der Server. Nimm die feste IP im Heimnetz.
+
+Über den Tunnel ist die Anmeldeseite aus dem ganzen Internet erreichbar. Schalte deshalb Cloudflare Access davor: Zero Trust, Access, Applications, eine Self-hosted-Anwendung für denselben Hostnamen mit einer Allow-Policy für die E-Mail-Adressen, die hineindürfen.
+
+### Ohne Reverse Proxy zum Ausprobieren
+
+Mit `BASE_URL=http://<IP>:8093` lässt sich die App direkt über HTTP aufrufen. Für den Dauerbetrieb ist das nicht gedacht.
 
 ## Update
 
@@ -108,12 +136,12 @@ Für die lokale `.env` genügt `BASE_URL=http://localhost:8093` zusammen mit `AD
 | `public/` | Frontend ohne Framework und ohne Build. `calc.js` enthält die Rechenlogik ohne Zugriff auf DOM oder Speicher. |
 | `server/` | Fastify, SQLite (`better-sqlite3`), Anmeldung, Fotos |
 | `test/` | Unit-Tests für die Rechenlogik und Tests für die API |
-| `scripts/` | `npm run assets` erzeugt Icons und Schriften neu, nur nötig nach einer Änderung am Logo |
+| `scripts/` | `npm run assets` erzeugt Bilder, Icons und Schriften neu, nur nötig nach einer Änderung an Logo oder Icon |
 
 ## Lizenz
 
 Der Code steht unter der [MIT-Lizenz](LICENSE): Du darfst ihn nutzen, ändern und weitergeben, solange Urheberhinweis und Lizenztext erhalten bleiben. Es gibt keine Garantie.
 
-Davon ausgenommen sind das Logo und das Siegel «Pizzeria Pizzaiolo Patricio» (`logo-pizzeria-patricio.png` und die daraus erzeugten Bilder in `public/img/`). Sie dürfen als Teil der unveränderten App mitlaufen, aber nicht für eigene Zwecke verwendet werden. Wer eine eigene Version veröffentlicht, ersetzt sie bitte durch ein eigenes Logo und erzeugt die Icons mit `npm run assets` neu.
+Davon ausgenommen sind das Logo und das Siegel «Pizzeria Pizzaiolo Patricio» (`logo-pizzeria-patricio.png` und die daraus erzeugten Bilder `public/img/kopf.webp` und `public/img/siegel.webp`). Sie dürfen als Teil der unveränderten App mitlaufen, aber nicht für eigene Zwecke verwendet werden. Wer eine eigene Version veröffentlicht, ersetzt sie bitte durch ein eigenes Logo und erzeugt die Bilder mit `npm run assets` neu. Das App-Icon (`public/img/icon.svg`) fällt unter die MIT-Lizenz.
 
 Die Schriften Bricolage Grotesque und Instrument Sans liegen lokal im Image und stehen unter der SIL Open Font License, siehe `public/fonts/`.

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- App-Icon der Pizza App: die Pizza als Zifferblatt, die Zeiger stehen auf 19:00.
+       Alles Wichtige liegt im inneren Kreis (r = 205), damit runde Masken nichts abschneiden. -->
+  <rect width="512" height="512" fill="#F6EBC6"/>
+  <circle cx="256" cy="262" r="186" fill="#000" opacity=".16"/>
+  <circle cx="256" cy="256" r="186" fill="#D9A04A"/>
+  <circle cx="256" cy="256" r="186" fill="none" stroke="#B9782B" stroke-width="6"/>
+  <circle cx="256" cy="256" r="146" fill="#D5391F"/>
+  <circle cx="256" cy="256" r="146" fill="none" stroke="#B02A16" stroke-width="4"/>
+  <ellipse cx="196" cy="190" rx="30" ry="24.6" transform="rotate(-20 196 190)" fill="#FFF8E1"/>
+  <ellipse cx="322" cy="200" rx="26" ry="21.3" transform="rotate(30 322 200)" fill="#FFF8E1"/>
+  <ellipse cx="180" cy="300" rx="26" ry="21.3" transform="rotate(15 180 300)" fill="#FFF8E1"/>
+  <ellipse cx="330" cy="312" rx="31" ry="25.4" transform="rotate(-25 330 312)" fill="#FFF8E1"/>
+  <ellipse cx="262" cy="350" rx="22" ry="18.0" transform="rotate(0 262 350)" fill="#FFF8E1"/>
+  <g transform="translate(262 168) rotate(35)"><path d="M0-26C17-14 17 14 0 26C-17 14-17-14 0-26Z" fill="#2E6B3F"/><path d="M0-20V20" stroke="#1F4D2C" stroke-width="2.5" stroke-linecap="round"/></g>
+  <g transform="translate(352 258) rotate(-50)"><path d="M0-26C17-14 17 14 0 26C-17 14-17-14 0-26Z" fill="#2E6B3F"/><path d="M0-20V20" stroke="#1F4D2C" stroke-width="2.5" stroke-linecap="round"/></g>
+  <g transform="translate(214 248) rotate(-30)"><path d="M0-26C17-14 17 14 0 26C-17 14-17-14 0-26Z" fill="#2E6B3F"/><path d="M0-20V20" stroke="#1F4D2C" stroke-width="2.5" stroke-linecap="round"/></g>
+  <g transform="translate(292 318) rotate(70)"><path d="M0-26C17-14 17 14 0 26C-17 14-17-14 0-26Z" fill="#2E6B3F"/><path d="M0-20V20" stroke="#1F4D2C" stroke-width="2.5" stroke-linecap="round"/></g>
+  <g transform="translate(160 244) rotate(20)"><path d="M0-26C17-14 17 14 0 26C-17 14-17-14 0-26Z" fill="#2E6B3F"/><path d="M0-20V20" stroke="#1F4D2C" stroke-width="2.5" stroke-linecap="round"/></g>
+  <g stroke="#2B1D1A" stroke-linecap="round"><path d="M256 256L256 138" stroke-width="15"/><path d="M256 256L213 331" stroke-width="20"/></g>
+  <circle cx="256" cy="256" r="17" fill="#2B1D1A"/><circle cx="256" cy="256" r="6" fill="#F6EBC6"/>
+</svg>
