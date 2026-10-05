@@ -7,8 +7,8 @@ const app = await buildApp({dataDir, logger: true, config: configFromEnv()}).cat
   if (!['EACCES', 'EPERM', 'EROFS', 'SQLITE_CANTOPEN', 'SQLITE_READONLY'].includes(err.code)) throw err;
   const ich = process.getuid ? `${process.getuid()}:${process.getgid()}` : 'dieser Benutzer';
   console.error(`Pizza App kann nicht in ${dataDir} schreiben (${err.code}). Der Container läuft als ${ich}.\n`
-    + 'Der Ordner auf dem Host muss diesem Benutzer gehören. Setze die Stack-Variablen PUID und PGID auf den Besitzer des Ordners\n'
-    + '(sie gehören in die .env beziehungsweise die Stack-Variablen, nicht unter «environment:») oder gib den Ordner mit chown diesem Benutzer.');
+    + 'Normalerweise richtet der Container die Rechte beim Start selbst. Das entfällt, wenn in der Compose-Datei «user:» gesetzt ist:\n'
+    + 'Entferne die Zeile und setze stattdessen PUID und PGID, oder gib den Ordner auf dem Host mit chown diesem Benutzer.');
   process.exit(1);
 });
 if (!process.env.SESSION_SECRET) app.log.warn('SESSION_SECRET fehlt: Sitzungen gelten nur bis zum nächsten Neustart.');

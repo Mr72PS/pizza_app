@@ -39,19 +39,15 @@ Das Image ist öffentlich, zum Ziehen braucht es keine Anmeldung an ghcr.io.
 | `TRUST_PROXY` | Hinter dem Reverse Proxy `true`, damit IP-Adresse und HTTPS korrekt erkannt werden. |
 | `TZ` | Zeitzone, Standard `Europe/Zurich`. |
 | `PORT` | Port auf dem Host, Standard `8093`. |
-| `PUID`, `PGID` | Benutzer und Gruppe, unter denen der Container läuft. Müssen dem Besitzer des Ordners `data` entsprechen. Auf der Synology per SSH mit `id` nachsehen. |
+| `PUID`, `PGID` | Benutzer und Gruppe, unter denen die App läuft und denen die Dateien im Datenordner gehören. Freiwillig, Vorgabe `1000`. Auf der Synology lohnt sich der eigene Benutzer (per SSH mit `id` nachsehen), damit du die Dateien in der File Station siehst. |
 
-Alle Werte gehören in die `.env` beziehungsweise in die Stack-Variablen. Die Compose-Datei setzt sie von dort ein. Das gilt auch für `PUID` und `PGID`: Unter `environment:` eingetragen bleiben sie ohne Wirkung, weil sie die Zeile `user:` steuern und nicht von der App gelesen werden.
+Die Werte stehen in der `.env` oder in den Stack-Variablen; du kannst sie in der Compose-Datei unter `environment:` auch direkt eintragen.
 
-### Schreibrechte auf den Datenordner
+### Datenordner
 
-Steht im Log «Pizza App kann nicht in /data schreiben», gehört der Ordner `data` einem anderen Benutzer als dem, unter dem der Container läuft. Das passiert vor allem, wenn Docker den Ordner beim ersten Start selbst angelegt hat. Abhilfe per SSH, mit den Zahlen aus `id`:
+Der Container richtet die Schreibrechte selbst: Er startet kurz als root, gibt den Datenordner dem Benutzer aus `PUID` und `PGID` und wechselt dann auf diesen Benutzer. Die App selbst läuft nie als root. Ein `chown` von Hand ist nicht nötig.
 
-```bash
-sudo chown -R 1026:100 /volume1/docker/pizza_app/data
-```
-
-Danach `PUID=1026` und `PGID=100` in den Stack-Variablen setzen und neu starten. In Dockhand und Portainer lohnt es sich, in der Compose-Datei statt `./data` den vollen Pfad einzutragen, zum Beispiel `/volume1/docker/pizza_app/data:/data`.
+Achte auf die Volume-Zeile in der Compose-Datei: links der Ordner auf dem Server, rechts immer `/data`. In Dockhand und Portainer am besten mit vollem Pfad, zum Beispiel `/volume1/docker/pizza_app/data:/data`. Fehlt der Teil `:/data`, landen die Daten in einem anonymen Docker-Volume und nicht in deinem Ordner. Nach dem Start müssen im Ordner `pizza_app.sqlite` und `fotos` liegen.
 
 ## Reverse Proxy
 

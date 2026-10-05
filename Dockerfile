@@ -22,10 +22,13 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY server ./server
 COPY public ./public
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN mkdir /data && chown node:node /data
-USER node
+# Kein USER: Der Einstieg richtet als root die Rechte auf /data und wechselt dann auf PUID:PGID (Vorgabe 1000:1000)
 VOLUME /data
 EXPOSE 8093
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+ENTRYPOINT ["docker-entrypoint.sh"]
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "server/index.js"]

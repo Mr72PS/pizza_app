@@ -5,8 +5,6 @@ services:
     image: ghcr.io/mr72ps/pizza_app:latest
     container_name: pizza_app
     restart: unless-stopped
-    # Muss dem Besitzer des Ordners ./data entsprechen, sonst kann die App nicht schreiben
-    user: "${PUID:-1000}:${PGID:-1000}"
     ports:
       - "${PORT:-8093}:8093"
     environment:
@@ -16,5 +14,10 @@ services:
       BASE_URL: ${BASE_URL}
       TRUST_PROXY: ${TRUST_PROXY:-true}
       TZ: ${TZ:-Europe/Zurich}
+      # Benutzer und Gruppe, denen die Dateien im Datenordner gehören sollen
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
     volumes:
+      # Links der Ordner auf dem Server, rechts immer /data. Auf der Synology am besten den vollen Pfad eintragen,
+      # zum Beispiel /volume1/docker/pizza_app/data:/data
       - ./data:/data

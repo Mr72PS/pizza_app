@@ -36,6 +36,30 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image zum Testen bauen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: pizza_app:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Container starten und prüfen
+        run: |
+          # Der Datenordner gehört root, wie ein von Docker angelegter Ordner auf der Synology
+          mkdir -p "$RUNNER_TEMP/data" && sudo chown root:root "$RUNNER_TEMP/data"
+          docker run -d --name smoke -p 8093:8093 -e PUID=1234 -e PGID=1234             -e ADMIN_USER=admin -e ADMIN_PASSWORD=nur-fuer-den-testlauf -e BASE_URL=http://localhost:8093             -v "$RUNNER_TEMP/data:/data" pizza_app:smoke
+          for i in $(seq 1 30); do curl -fsS http://localhost:8093/healthz >/dev/null 2>&1 && break; sleep 1; done
+          curl -fsS http://localhost:8093/healthz
+          # Die App läuft als PUID, nicht als root, und die Dateien gehören PUID:PGID
+          test "$(docker exec smoke awk '/^Uid:/{print $2}' /proc/1/status)" = "1234"
+          test "$(sudo stat -c %u:%g "$RUNNER_TEMP/data/pizza_app.sqlite")" = "1234:1234"
+          test "$(sudo stat -c %u:%g "$RUNNER_TEMP/data/fotos")" = "1234:1234"
+          # Anmelden funktioniert
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Origin: http://localhost:8093' -H 'Content-Type: application/json'             -d '{"username":"admin","password":"nur-fuer-den-testlauf"}' http://localhost:8093/api/login)" = "200"
+      - name: Log des Containers
+        if: always()
+        run: docker logs smoke || true
       - uses: docker/build-push-action@v6
         with:
           context: .
