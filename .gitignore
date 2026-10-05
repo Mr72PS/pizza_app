@@ -1,0 +1,8 @@
+node_modules/
+.env
+data/
+.claude/
+
+# Bleiben lokal: Übergabedokument und Prototyp
+UEBERGABE-CLAUDE-CODE.md
+pizza_app.html
