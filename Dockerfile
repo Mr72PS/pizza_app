@@ -4,6 +4,8 @@
 # ---- Stufe 1: Abhängigkeiten für den Betrieb ----
 FROM node:24-bookworm-slim AS deps
 WORKDIR /app
+# better-sqlite3 wird beim Installieren übersetzt; die Werkzeuge dafür bleiben in dieser Stufe
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev \
  # Früh scheitern, falls die nativen Module für diese Plattform fehlen
