@@ -4,4 +4,3 @@
 !server/
 !public/
 !docker-entrypoint.sh
-!docker-entrypoint.sh

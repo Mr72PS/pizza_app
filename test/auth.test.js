@@ -1,7 +1,7 @@
 /* Anmeldung, Sitzungen, Benutzerverwaltung und Sicherheit nach Abschnitt 6 der Übergabe. */
 import {test, beforeEach, afterEach, mock} from 'node:test';
 import assert from 'node:assert/strict';
-import {startApp, client, tempDir, removeDir, ADMIN, ORIGIN} from './helper.js';
+import {startApp, client, tempDir, removeDir, ADMIN, ORIGIN, EVENT} from './helper.js';
 
 let dir, app, admin;
 beforeEach(async () => { dir = tempDir(); app = await startApp(dir); admin = client(app); });
@@ -184,7 +184,7 @@ test('Admin legt Benutzer an; normale Benutzer nutzen die App, aber nicht die Ve
 test('alle Benutzer sehen dieselben Daten, updated_by hält fest, wer geschrieben hat', async () => {
   const u = await neuerBenutzer();
   const gast = client(app); await gast.login(GAST);
-  assert.equal((await gast.call('PUT', '/api/events/ev1', {data: {name: 'vom Gast'}})).status, 201);
+  assert.equal((await gast.call('PUT', '/api/events/ev1', {data: {...EVENT, name: 'vom Gast'}})).status, 201);
   assert.equal((await admin.call('GET', '/api/state')).body.events[0].data.name, 'vom Gast');
   assert.equal(app.db.prepare('SELECT updated_by FROM events').get().updated_by, u.id);
 });

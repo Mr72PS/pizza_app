@@ -40,6 +40,7 @@ async function pump(){
           const old=synced[k].get(id); if(old&&old.json===json) continue;
           const r=await api('PUT',`/api/${k}/${id}`,{data:JSON.parse(json),updatedAt:old?old.ver:null});
           if(r.status===409) return await conflict();
+          if(r.status===400) return await conflict('Der Server hat die Änderung abgelehnt, weil ein Wert ungültig ist. Die App hat den gespeicherten Stand geladen.');
           if(r.status>=300) throw new Error(k+' '+r.status);
           synced[k].set(id,{json,ver:r.data.updatedAt});
         }
@@ -57,10 +58,10 @@ async function pump(){
   }finally{saving=false;}
 }
 // Veraltete Versionsmarke: jemand anderes war schneller. Neu laden statt überschreiben.
-async function conflict(){
+async function conflict(msg){
   dirty=false; ui.draft=null;
   try{await loadState();}catch(e){}
-  alert('Jemand hat diese Daten inzwischen geändert. Die App hat den aktuellen Stand geladen. Bitte wiederhole deine letzte Änderung.');
+  alert(msg||'Jemand hat diese Daten inzwischen geändert. Die App hat den aktuellen Stand geladen. Bitte wiederhole deine letzte Änderung.');
   render();
 }
 // Änderungen anderer Benutzer nachladen, ohne offene Formulare zu stören
@@ -77,6 +78,7 @@ async function refresh(){
 /* ---------- Helfer ---------- */
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const recipes=()=>state.recipes;
+const meth=m=>METHODEN[m]||METHODEN.direkt;
 const recipe=id=>recipes().find(r=>r.id===id);
 const uid=()=>Math.random().toString(36).slice(2,10);
 function methodeOptions(r,sel){
@@ -100,7 +102,7 @@ async function saveFoto(id,data){
 // Die Zeit des Protokolls hängt an der Adresse, damit ein ersetztes Foto nicht aus dem Cache kommt
 function loadFoto(id){
   if(id in fotos) return;
-  const e=state.events.find(x=>x.id===id); fotos[id]=e&&e.log&&e.log.foto?fotoUrl(id)+'?v='+(e.log.ts||0):null;
+  const e=state.events.find(x=>x.id===id); fotos[id]=e&&e.log&&e.log.foto?fotoUrl(id)+'?v='+(Number(e.log.ts)||0):null;
 }
 function shrink(file){return new Promise((res,rej)=>{
   const fr=new FileReader(); fr.onerror=rej;
@@ -110,7 +112,7 @@ function shrink(file){return new Promise((res,rej)=>{
     let d=c.toDataURL('image/jpeg',0.6); if(d.length>230000) d=c.toDataURL('image/jpeg',0.35); res(d);};
     img.src=fr.result;};
   fr.readAsDataURL(file);});}
-const sterne=n=>n?`<span class="stars" role="img" aria-label="${n} von 5 Sternen">${'★'.repeat(n)}${'☆'.repeat(5-n)}</span>`:'';
+const sterne=x=>{const n=Math.min(5,Math.max(0,Math.round(Number(x))||0)); return n?`<span class="stars" role="img" aria-label="${n} von 5 Sternen">${'★'.repeat(n)}${'☆'.repeat(5-n)}</span>`:'';};
 
 /* ---------- Herkunft der Rezepte ---------- */
 const QUELLEN={
@@ -149,7 +151,7 @@ function amountsTable(p,r){
   }
   h+='</table>';
   if(ml.text) h+=`<p class="small" style="margin-top:10px"><strong>Mehl-Empfehlung für die besten Ergebnisse:</strong> ${esc(ml.mix.map(k=>g(k.p)+' % '+k.n).concat(ml.notes).join(', '))}.</p>`;
-  h+=`<p class="small muted" style="margin-top:10px">Ergibt ${p.n} Teiglinge à ${g(r.ballen)} g${(r.reserve??2)>=1?', mit '+g(r.reserve??2)+' % Reserve':''}. ${r.vtHefe!=null||r.hefeFix!=null?'Die Hefemenge ist im Rezept fest hinterlegt':'Hefemengen sind Richtwerte für '+(p.pf?'den Vorteig':'die gewählte Zeit')}${r.hefeArt==='trocken'?'':'; statt frischer Hefe geht ein Drittel der Menge als Instanthefe'}.</p>`;
+  h+=`<p class="small muted" style="margin-top:10px">Ergibt ${esc(p.n)} Teiglinge à ${g(r.ballen)} g${(r.reserve??2)>=1?', mit '+g(r.reserve??2)+' % Reserve':''}. ${r.vtHefe!=null||r.hefeFix!=null?'Die Hefemenge ist im Rezept fest hinterlegt':'Hefemengen sind Richtwerte für '+(p.pf?'den Vorteig':'die gewählte Zeit')}${r.hefeArt==='trocken'?'':'; statt frischer Hefe geht ein Drittel der Menge als Instanthefe'}.</p>`;
   return h;
 }
 
@@ -158,7 +160,7 @@ function viewEvents(){
   const evs=[...state.events].sort((a,b)=>new Date(a.essen)-new Date(b.essen));
   const kommend=evs.filter(e=>new Date(e.essen).getTime()+4*3600e3>=now), vorbei=evs.filter(e=>!kommend.includes(e)).reverse();
   const li=e=>{const d=new Date(e.essen), r=recipe(e.recipeId);
-    return `<li class="hasdel"><button class="item" data-open-event="${e.id}"><span class="when">${TAGE[d.getDay()]} ${dm(d)}<span>${hm(d)} Uhr</span></span><span><span class="t">${esc(e.name||'Pizza-Abend')}</span><br><span class="small muted">${e.anzahl} × ${esc(r?r.name:'Rezept gelöscht')}${r&&e.methode&&e.methode!==r.methode?', '+KURZ[e.methode].toLowerCase():''}</span>${e.log&&e.log.sterne?'<br>'+sterne(e.log.sterne):''}</span><span class="chev" aria-hidden="true">›</span></button><button class="del" data-del-event="${e.id}" aria-label="${esc(e.name||'Pizza-Abend')} löschen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></li>`;};
+    return `<li class="hasdel"><button class="item" data-open-event="${e.id}"><span class="when">${TAGE[d.getDay()]} ${dm(d)}<span>${hm(d)} Uhr</span></span><span><span class="t">${esc(e.name||'Pizza-Abend')}</span><br><span class="small muted">${esc(e.anzahl)} × ${esc(r?r.name:'Rezept gelöscht')}${r&&KURZ[e.methode]&&e.methode!==r.methode?', '+KURZ[e.methode].toLowerCase():''}</span>${e.log&&e.log.sterne?'<br>'+sterne(e.log.sterne):''}</span><span class="chev" aria-hidden="true">›</span></button><button class="del" data-del-event="${e.id}" aria-label="${esc(e.name||'Pizza-Abend')} löschen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></li>`;};
   return `<div class="top"><h1>Pizza App</h1></div>
   <p class="muted">Sag, wann die Pizza auf dem Teller sein soll. Die App rechnet zurück, wann du mit dem Teig anfangen musst.</p>
   <p style="margin:18px 0 0"><button class="btn primary" data-new-event>Event planen</button></p>
@@ -173,7 +175,7 @@ function viewEventForm(){
   const r0=(!e&&ui.preRecipe&&recipe(ui.preRecipe))||recipes()[0];
   const m0=(!e&&ui.preRecipe&&ui.calcM)||'';
   const v=ui.draft||e||{name:'',essen:toInput(def),recipeId:r0.id,methode:m0,anzahl:r0.stdAnzahl||3,raumtemp:21,maschine:!!r0.maschine,dauer:'',park:m0?0:(r0.parkStd||0)};
-  const r=recipe(v.recipeId)||recipes()[0], er=eff(r,v), M=METHODEN[er.methode], vt=er.methode==='biga'||er.methode==='poolish';
+  const r=recipe(v.recipeId)||recipes()[0], er=eff(r,v), M=meth(er.methode), vt=er.methode==='biga'||er.methode==='poolish';
   return `<button class="back" data-nav="${e?'':'events'}" ${e?`data-open-event="${e.id}"`:''}>‹ Zurück</button>
   <h1 style="font-size:2rem;margin-bottom:18px">${e?'Event ändern':'Event planen'}</h1>
   <form id="eventForm">
@@ -188,8 +190,8 @@ function viewEventForm(){
     </div>
     <p class="hint small muted" id="gastHint" style="margin:-8px 0 0">${gastTxt(v.erw,v.kind)||'Mit Gästezahl schlägt die App die Anzahl Pizzen vor: eine pro Erwachsenen, eine halbe pro Kind, plus eine Reserve.'}</p>
     <div class="two">
-      <label>Anzahl Pizzen<input type="number" name="anzahl" min="1" max="40" value="${v.anzahl}" inputmode="numeric" required></label>
-      <label>Küche in °C<input type="number" name="raumtemp" min="10" max="35" value="${v.raumtemp}" inputmode="numeric" required></label>
+      <label>Anzahl Pizzen<input type="number" name="anzahl" min="1" max="40" value="${esc(v.anzahl)}" inputmode="numeric" required></label>
+      <label>Küche in °C<input type="number" name="raumtemp" min="10" max="35" value="${esc(v.raumtemp)}" inputmode="numeric" required></label>
     </div>
     <label><span id="dauerLbl">${M.dauerLbl} in Stunden</span><input type="number" name="dauer" min="1" max="96" step="1" value="${esc(v.dauer||er.dauer)}" inputmode="numeric">
       <span class="hint">Aus dem Rezept übernommen. Hier nur für diesen Event ändern, zum Beispiel wenn ein Schritt in die Nacht fällt.</span></label>
@@ -218,7 +220,7 @@ function viewEvent(){
   });
   return `<button class="back" data-nav="events">‹ Events</button>
   <h1 style="font-size:2rem">${esc(e.name||'Pizza-Abend')}</h1>
-  <p class="muted">${p.n} × ${esc(r.name)}${R!==r?' ('+KURZ[R.methode].toLowerCase()+')':''}, essen am ${TAGE_LANG[p.E.getDay()]}, ${dm(p.E)} um ${hm(p.E)} Uhr</p>
+  <p class="muted">${esc(p.n)} × ${esc(r.name)}${R!==r?' ('+(KURZ[R.methode]||'').toLowerCase()+')':''}, essen am ${TAGE_LANG[p.E.getDay()]}, ${dm(p.E)} um ${hm(p.E)} Uhr</p>
   <div class="start"><div class="lbl">Starte am ${TAGE_LANG[s0.t.getDay()]}, ${dm(s0.t)} um</div><div class="big">${hm(s0.t)}</div><div class="what">${esc(s0.ttl)}</div></div>
   ${p.warn.map(w=>`<p class="note">${esc(w)}</p>`).join('')}
   ${sug.length?`<div class="sug"><h3>${p.nacht?'Vorschläge, damit alles tagsüber liegt':'Vorschläge, die zeitlich noch reichen'}</h3>${sug.map(c=>`<button class="sugb" data-apply="${c.D}|${c.P}"><strong>Start ${TAGE[c.t.getDay()]} ${dm(c.t)} um ${hm(c.t)}</strong><span>${esc(c.txt)}. Antippen zum Übernehmen.</span></button>`).join('')}</div>`:((p.nacht||p.past)?'<p class="small muted" style="margin-top:8px">Für dieses Rezept findet die App keine passende Variante. Wähle einen späteren Termin oder ein anderes Rezept.</p>':'')}
@@ -227,10 +229,10 @@ function viewEvent(){
   <h2>Zeitplan</h2><p class="small muted">${esc(p.info)}. Tippe auf einen Schritt für die Details, auf den Punkt zum Abhaken.</p>
   <ol class="tl">${tl}</ol>
   <h2>Zutaten</h2>${amountsTable(p,R)}
-  <h2>Ofen</h2><p>Oben ${esc(r.oben)} °C, unten ${esc(r.unten)} °C, ${r.backMin}–${r.backMax} min pro Pizza. Das sind Startwerte: nach der ersten Pizza nachstellen.</p>
+  <h2>Ofen</h2><p>Oben ${esc(r.oben)} °C, unten ${esc(r.unten)} °C, ${esc(r.backMin)}–${esc(r.backMax)} min pro Pizza. Das sind Startwerte: nach der ersten Pizza nachstellen.</p>
   <h2>Backprotokoll</h2>
   ${L?`<div class="card">${sterne(L.sterne)}
-    ${L.foto&&fotos[e.id]?`<img class="foto" src="${fotos[e.id]}" alt="Foto vom Pizza-Abend">`:''}
+    ${L.foto&&fotos[e.id]?`<img class="foto" src="${esc(fotos[e.id])}" alt="Foto vom Pizza-Abend">`:''}
     ${[L.raum?`Küche ${esc(L.raum)} °C`:'',L.oben?`oben ${esc(L.oben)} °C`:'',L.unten?`unten ${esc(L.unten)} °C`:'',L.backzeit?`Backzeit ${esc(L.backzeit)}`:''].filter(Boolean).length?`<p style="margin-top:8px">${[L.raum?`Küche ${esc(L.raum)} °C`:'',L.oben?`oben ${esc(L.oben)} °C`:'',L.unten?`unten ${esc(L.unten)} °C`:'',L.backzeit?`Backzeit ${esc(L.backzeit)}`:''].filter(Boolean).join(', ')}</p>`:''}
     ${L.gut?`<p><strong>Gut war:</strong> ${esc(L.gut)}</p>`:''}${L.aendern?`<p><strong>Nächstes Mal:</strong> ${esc(L.aendern)}</p>`:''}
     <div class="row" style="margin-top:10px"><button class="btn quiet" data-log="${e.id}">Bearbeiten</button>${L.oben||L.unten?`<button class="btn quiet" data-log-apply="${e.id}">Ofenwerte ins Rezept übernehmen</button>`:''}</div></div>`
@@ -241,13 +243,13 @@ function viewEvent(){
 function viewShop(){
   const e=state.events.find(x=>x.id===ui.id), r=e&&recipe(e.recipeId); if(!e||!r) return viewEvents();
   const R=eff(r,e), k=einkauf(e,R), b=belagOf(e), sh=e.shop||{}, ok=sh.ok||{}, extra=sh.extra||[];
-  const item=(key,nm,amt,x)=>`<label class="chk ${ok[key]?'on':''}"><input type="checkbox" data-shopkey="${esc(key)}" ${ok[key]?'checked':''}><span>${esc(nm)}</span><span class="amt">${esc(amt)}</span>${x?`<button type="button" class="x" data-shop-del="${x}" aria-label="${esc(nm)} entfernen">×</button>`:''}</label>`;
+  const item=(key,nm,amt,x)=>`<label class="chk ${ok[key]?'on':''}"><input type="checkbox" data-shopkey="${esc(key)}" ${ok[key]?'checked':''}><span>${esc(nm)}</span><span class="amt">${esc(amt)}</span>${x?`<button type="button" class="x" data-shop-del="${esc(x)}" aria-label="${esc(nm)} entfernen">×</button>`:''}</label>`;
   return `<button class="back" data-open-event="${e.id}">‹ Zeitplan</button>
   <h1 style="font-size:2rem">Einkaufsliste</h1>
-  <p class="muted">${esc(e.name||'Pizza-Abend')}, ${e.anzahl} × ${esc(r.name)}</p>
+  <p class="muted">${esc(e.name||'Pizza-Abend')}, ${esc(e.anzahl)} × ${esc(r.name)}</p>
   <h2>Welche Pizzen?</h2>
-  ${BELAEGE.map(B=>`<div class="belag"><span><strong>${B.name}</strong><br><span class="small muted">${B.z.map(z=>z[0]).join(', ')}</span></span><span class="stepper" style="margin-left:auto"><button data-belag="${B.id}|-1" aria-label="Eine ${B.name} weniger">−</button><output>${b[B.id]||0}</output><button data-belag="${B.id}|1" aria-label="Eine ${B.name} mehr">+</button></span></div>`).join('')}
-  <p class="${k.verteilt===e.anzahl?'small muted':'note'}" style="margin-top:10px">${k.verteilt} von ${e.anzahl} Pizzen verteilt.${k.verteilt===e.anzahl?'':' Der Teig reicht für '+e.anzahl+'.'}</p>
+  ${BELAEGE.map(B=>`<div class="belag"><span><strong>${B.name}</strong><br><span class="small muted">${B.z.map(z=>z[0]).join(', ')}</span></span><span class="stepper" style="margin-left:auto"><button data-belag="${B.id}|-1" aria-label="Eine ${B.name} weniger">−</button><output>${esc(b[B.id]||0)}</output><button data-belag="${B.id}|1" aria-label="Eine ${B.name} mehr">+</button></span></div>`).join('')}
+  <p class="${k.verteilt===e.anzahl?'small muted':'note'}" style="margin-top:10px">${k.verteilt} von ${esc(e.anzahl)} Pizzen verteilt.${k.verteilt===e.anzahl?'':' Der Teig reicht für '+esc(e.anzahl)+'.'}</p>
   <h2>Für den Teig</h2>${k.teig.map(([n,a])=>item('teig:'+n,n,a)).join('')}
   <h2>Für den Belag</h2>${k.belag.length?k.belag.map(([n,a])=>item('belag:'+n,n,a)).join(''):'<p class="muted">Noch keine Pizza gewählt.</p>'}
   <p class="small muted" style="margin-top:8px">Die Belagsmengen sind Richtwerte pro Pizza.</p>
@@ -257,7 +259,7 @@ function viewShop(){
 
 function viewLog(){
   const e=state.events.find(x=>x.id===ui.id), r=e&&recipe(e.recipeId); if(!e) return viewEvents();
-  const L=e.log||{}, st=L.sterne||0; if(L.foto) loadFoto(e.id);
+  const L=e.log||{}, st=Math.min(5,Math.max(0,Math.round(Number(L.sterne))||0)); if(L.foto) loadFoto(e.id);
   const foto=ui.fotoDraft!==undefined?ui.fotoDraft:(L.foto?fotos[e.id]:null);
   return `<button class="back" data-open-event="${e.id}">‹ Zeitplan</button>
   <h1 style="font-size:2rem;margin-bottom:6px">Backprotokoll</h1>
@@ -270,7 +272,7 @@ function viewLog(){
     <label>Was war gut?<textarea name="gut">${esc(L.gut||'')}</textarea></label>
     <label>Was änderst du nächstes Mal?<textarea name="aendern">${esc(L.aendern||'')}</textarea></label>
     <label>Foto<input type="file" id="fotoIn" accept="image/*"></label>
-    <div id="fotoBox">${foto?`<img class="foto" src="${foto}" alt="Foto vom Pizza-Abend"><button type="button" class="btn quiet" data-foto-del>Foto entfernen</button>`:''}</div>
+    <div id="fotoBox">${foto?`<img class="foto" src="${esc(foto)}" alt="Foto vom Pizza-Abend"><button type="button" class="btn quiet" data-foto-del>Foto entfernen</button>`:''}</div>
     <button class="btn primary" type="submit">Protokoll speichern</button>
   </form>
   ${e.log?`<p style="margin-top:20px"><button class="btn danger" data-log-del="${e.id}">Protokoll löschen</button></p>`:''}`;
@@ -290,7 +292,7 @@ function viewGuide(){
 }
 
 function viewRecipes(){
-  const li=r=>`<li><button class="item" data-open-recipe="${r.id}">${srcIcon(r)}<span><span class="t">${esc(r.name)}</span><br><span class="small muted">${METHODEN[r.methode].name}, ${g(r.dauer)} h, ${g(r.hyd)} % Wasser</span></span><span class="chev" aria-hidden="true">›</span></button></li>`;
+  const li=r=>`<li><button class="item" data-open-recipe="${r.id}">${srcIcon(r)}<span><span class="t">${esc(r.name)}</span><br><span class="small muted">${meth(r.methode).name}, ${g(r.dauer)} h, ${g(r.hyd)} % Wasser</span></span><span class="chev" aria-hidden="true">›</span></button></li>`;
   const groups=['mein','web','vorlage'].map(q=>{const rs=recipes().filter(r=>src(r)===q); return rs.length?`<h2>${QUELLEN[q].gruppe}</h2><ul class="list">${rs.map(li).join('')}</ul>`:'';}).join('');
   return `<div class="top"><h1>Rezepte</h1></div>
   <p class="muted">Alle Mengen stehen in Bäckerprozenten und werden pro Event auf die Anzahl Pizzen umgerechnet.</p>
@@ -306,7 +308,7 @@ function viewRecipe(){
   return `<button class="back" data-nav="recipes">‹ Rezepte</button>
   <div class="titlerow"><h1 style="font-size:2rem">${esc(r.name)}</h1>${src(r)==='mein'?`<img class="seal" src="${IMG_SIEGEL}" alt="Siegel Pizzeria Pizzaiolo Patricio">`:''}</div>
   <p class="srcline">${srcIcon(r)}<span>${QUELLEN[src(r)].name}${srcUrl(r)?` · <a href="${esc(srcUrl(r))}" target="_blank" rel="noopener noreferrer">Quelle öffnen</a>`:''}</span></p>
-  <p class="muted" style="margin-top:10px">${METHODEN[rr.methode].name}, ${METHODEN[rr.methode].dauerLbl} ${g(rr.dauer)} h</p>
+  <p class="muted" style="margin-top:10px">${meth(rr.methode).name}, ${meth(rr.methode).dauerLbl} ${g(rr.dauer)} h</p>
   ${r.notiz?`<p>${esc(r.notiz)}</p>`:''}
   <div class="row" style="margin-top:14px"><button class="btn primary grow" data-new-event="${r.id}">Event damit planen</button><button class="btn" data-edit-recipe="${r.id}">Bearbeiten</button></div>
   <h2>Zutaten</h2>
@@ -315,7 +317,7 @@ function viewRecipe(){
   ${amountsTable(p,rr)}
   <h2>Teig</h2><table class="amounts">${row('Teigling',g(r.ballen)+' g')}${row('Wasser',g(r.hyd,1)+' %')}${row('Salz',g(r.salz,1)+' %')}${row('Olivenöl',g(r.oel,1)+' %')}${row('Zucker',g(r.zucker,1)+' %')}${rr.methode==='poolish'||rr.methode==='biga'?row('Mehl im Vorteig',g(rr.anteil||40)+' %'):''}</table>
   <h2>Ablauf</h2><ol style="padding-left:20px">${p.steps.map(s=>`<li style="margin-bottom:8px"><strong>${esc(s.ttl)}</strong>${s.k==='backen'?'':' ('+span(s.min)+')'}<br><span class="muted small">${esc(s.d[s.k==='kneten'||s.k==='vorteig'?1:0])}</span></li>`).join('')}</ol>
-  <h2>Formen und Backen</h2><p>${esc(r.formen)}</p><p>Oben ${esc(r.oben)} °C, unten ${esc(r.unten)} °C, ${r.backMin}–${r.backMax} min pro Pizza.</p>
+  <h2>Formen und Backen</h2><p>${esc(r.formen)}</p><p>Oben ${esc(r.oben)} °C, unten ${esc(r.unten)} °C, ${esc(r.backMin)}–${esc(r.backMax)} min pro Pizza.</p>
   ${logs.length?`<h2>Backprotokolle</h2><ul class="list">${logs.map(e=>{const d=new Date(e.essen); return `<li><button class="item" data-open-event="${e.id}"><span class="when">${dm(d)}<span>${d.getFullYear()}</span></span><span>${sterne(e.log.sterne)}<br><span class="small muted">${esc(e.log.aendern||e.log.gut||e.name||'')}</span></span><span class="chev" aria-hidden="true">›</span></button></li>`;}).join('')}</ul>`:''}
   <p style="margin-top:28px"><button class="btn danger" data-del-recipe="${r.id}">Rezept löschen</button></p>`;
 }
@@ -324,7 +326,7 @@ function viewRecipeForm(){
   const e=ui.id?recipe(ui.id):null;
   const v=e||{name:'',methode:'direkt',dauer:10,ballen:280,hyd:62,salz:2.6,oel:0,zucker:0,anteil:40,bigaKalt:true,oben:'450',unten:'430',backMin:2,backMax:3,formen:'',notiz:''};
   // step="any": Rezepte mit krummen Prozentwerten (donkarl, avpn) müssen sich speichern lassen
-  const num=(n,l,val,step=1,min=0,max=999)=>`<label>${l}<input type="number" name="${n}" value="${val}" step="any" min="${min}" max="${max}" inputmode="decimal" required></label>`;
+  const num=(n,l,val,step=1,min=0,max=999)=>`<label>${l}<input type="number" name="${n}" value="${esc(val)}" step="any" min="${min}" max="${max}" inputmode="decimal" required></label>`;
   return `<button class="back" ${e?`data-open-recipe="${e.id}"`:'data-nav="recipes"'}>‹ Zurück</button>
   <h1 style="font-size:2rem;margin-bottom:18px">${e?'Rezept bearbeiten':'Neues Rezept'}</h1>
   <form id="recipeForm">
@@ -332,7 +334,7 @@ function viewRecipeForm(){
     <label>Herkunft<select name="quelle">${Object.entries(QUELLEN).filter(([k])=>k!=='vorlage'||(e&&src(e)==='vorlage')).map(([k,q])=>`<option value="${k}" ${k===(e?src(e):'mein')?'selected':''}>${q.name}</option>`).join('')}</select></label>
     <label>Link zur Quelle<input name="quelleUrl" type="url" inputmode="url" placeholder="https://" value="${esc(e?(e.quelleUrl??SEED_URL[e.id]??''):'')}"><span class="hint">Freiwillig, für Rezepte aus dem Internet.</span></label>
     <label>Teigführung<select name="methode">${Object.entries(METHODEN).map(([k,m])=>`<option value="${k}" ${k===v.methode?'selected':''}>${m.name}</option>`).join('')}</select></label>
-    <div class="two">${num('dauer','<span id="rDauerLbl">'+METHODEN[v.methode].dauerLbl+' (h)</span>',v.dauer,1,1,96)}${num('ballen','Teigling (g)',v.ballen,5,80,600)}</div>
+    <div class="two">${num('dauer','<span id="rDauerLbl">'+meth(v.methode).dauerLbl+' (h)</span>',v.dauer,1,1,96)}${num('ballen','Teigling (g)',v.ballen,5,80,600)}</div>
     <div class="two">${num('hyd','Wasser (%)',v.hyd,0.5,40,90)}${num('salz','Salz (%)',v.salz,0.1,0,5)}</div>
     <div class="two">${num('oel','Olivenöl (%)',v.oel,0.5,0,10)}${num('zucker','Zucker (%)',v.zucker,0.5,0,5)}</div>
     <div id="vorteigFields" ${v.methode==='poolish'||v.methode==='biga'?'':'hidden'}>

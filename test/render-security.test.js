@@ -1,0 +1,98 @@
+/* Prüfpunkt 6: Was Benutzer speichern, darf in der Oberfläche nie als HTML ankommen.
+   Die API nimmt beliebiges JSON an; ein angemeldeter Benutzer kann also an der Oberfläche vorbei jedes Feld mit jedem Wert füllen.
+   Der Test lädt public/app.js mit einem kleinen DOM-Ersatz, füttert es mit präparierten Datensätzen
+   und sucht im erzeugten HTML nach der eingeschleusten Marke. */
+import {test, before} from 'node:test';
+import assert from 'node:assert/strict';
+import {SEED} from '../public/calc.js';
+
+const BOESE = '"><i pwn>';      // bricht aus Attributen aus und setzt ein Element
+const LECK = '<i pwn>';
+
+// Pro Feld ein eigener Datensatz, damit der Test das undichte Feld benennen kann
+const basisEvent = {name: 'Pizza-Abend', essen: '2030-01-05T19:00', recipeId: 'napo', methode: '', anzahl: 3, raumtemp: 21, maschine: false, dauer: 10, park: 0, erw: '', kind: '', done: {},
+  shop: {belag: {margherita: 3}, extra: [{id: 'x1', txt: 'Wein'}], ok: {}},
+  log: {sterne: 4, raum: '21', oben: '450', unten: '430', backzeit: '2:30', gut: 'Rand', aendern: 'Salz', foto: true, ts: 1}};
+const setze = (obj, pfad, wert) => { const o = structuredClone(obj); let z = o; const k = pfad.split('.'); while (k.length > 1) { const s = k.shift(); z = z[s]; } z[k[0]] = wert; return o; };
+const EVENT_FELDER = ['name', 'anzahl', 'raumtemp', 'dauer', 'park', 'erw', 'kind', 'essen', 'methode', 'shop.extra.0.id', 'shop.extra.0.txt', 'log.sterne', 'log.raum', 'log.oben', 'log.unten', 'log.backzeit', 'log.gut', 'log.aendern', 'log.ts'];
+const REZEPT_FELDER = ['name', 'notiz', 'formen', 'mehl', 'oben', 'unten', 'backMin', 'backMax', 'quelleUrl', 'wasserVT', 'wasserHT', 'hefeArt'];
+const napo = SEED.find(r => r.id === 'napo'), biga = SEED.find(r => r.id === 'biga100');
+
+const events = EVENT_FELDER.map((f, i) => ({id: 'e' + i, feld: f, data: {...setze(basisEvent, f, BOESE), id: 'e' + i}}));
+const rezepte = REZEPT_FELDER.map((f, i) => ({id: 'r' + i, feld: f, data: {...structuredClone(f.startsWith('wasser') ? biga : napo), id: 'r' + i, quelle: 'mein', [f]: BOESE}}));
+// Zu jedem präparierten Rezept ein Event, damit es auch in Zeitplan, Anleitung und Einkaufsliste auftaucht
+// Ein Rezept und ein Event mit einer Teigführung, die es nicht gibt
+const KAPUTT = [{id: 'rk', data: {...structuredClone(napo), id: 'rk', methode: 'gibtsnicht'}}, {id: 'ek', data: {...structuredClone(basisEvent), id: 'ek', methode: 'gibtsnicht'}}];
+const rezeptEvents = rezepte.map((r, i) => ({id: 'er' + i, feld: 'Rezept.' + r.feld, data: {...structuredClone(basisEvent), id: 'er' + i, recipeId: r.id}}));
+
+let klick, html;
+before(async () => {
+  const el = {set innerHTML(v) { html = v; }, get innerHTML() { return html; }};
+  const lauscher = {};
+  globalThis.document = {
+    hidden: false,
+    getElementById: () => el,
+    addEventListener: (typ, fn) => { lauscher[typ] = fn; },
+    querySelector: () => ({hidden: false}),
+    querySelectorAll: () => [],
+  };
+  globalThis.window = {scrollTo() {}};
+  globalThis.alert = () => {}; globalThis.confirm = () => false;
+  globalThis.setInterval = () => 0;
+  const antwort = (status, data) => ({status, ok: status < 300, json: async () => data});
+  globalThis.fetch = async url => {
+    if (url === '/api/me') return antwort(200, {user: {id: 1, username: BOESE, role: 'admin'}});
+    if (url === '/api/users') return antwort(200, {users: [{id: 1, username: BOESE, role: 'admin'}, {id: 2, username: BOESE + '2', role: 'user', disabled: true, locked: true}]});
+    if (url === '/api/state') return antwort(200, {
+      recipes: [{id: 'napo', data: napo, updatedAt: 1}, {...KAPUTT[0], updatedAt: 1}, ...rezepte.map(r => ({id: r.id, data: r.data, updatedAt: 1}))],
+      events: [{...KAPUTT[1], updatedAt: 1}, ...[...events, ...rezeptEvents].map(e => ({id: e.id, data: e.data, updatedAt: 1}))],
+    });
+    return antwort(204, null);
+  };
+  await import('../public/app.js');
+  await new Promise(r => setTimeout(r, 50));
+  klick = dataset => lauscher.click({target: {closest: () => ({dataset})}});
+});
+
+// Ruft eine Ansicht auf und meldet, ob die Marke als HTML durchkommt. Ein Absturz der Ansicht zählt nicht als Leck.
+function zeigt(dataset) {
+  html = '';
+  try { klick(dataset); } catch { return false; }
+  return html.includes(LECK);
+}
+const EVENT_ANSICHTEN = id => [{openEvent: id}, {shop: id}, {log: id}, {guide: id}, {editEvent: id}];
+const REZEPT_ANSICHTEN = id => [{openRecipe: id}, {editRecipe: id}, {newEvent: id}];
+
+test('6a: Listen und Konto zeigen gespeicherte Texte nie als HTML', async () => {
+  const lecks = [];
+  if (zeigt({nav: 'events'})) lecks.push('Event-Liste');
+  if (zeigt({nav: 'recipes'})) lecks.push('Rezept-Liste');
+  klick({nav: 'konto'}); await new Promise(r => setTimeout(r, 20));
+  if (html.includes(LECK)) lecks.push('Konto und Benutzerliste');
+  assert.deepEqual(lecks, []);
+});
+
+test('6b: kein Feld eines Events kommt als HTML in die Oberfläche', () => {
+  const lecks = events.filter(e => EVENT_ANSICHTEN(e.id).some(zeigt)).map(e => e.feld);
+  assert.deepEqual(lecks, []);
+});
+
+test('6c: kein Feld eines Rezepts kommt als HTML in die Oberfläche', () => {
+  const direkt = rezepte.filter(r => REZEPT_ANSICHTEN(r.id).some(zeigt)).map(r => r.feld);
+  const ueberEvent = rezeptEvents.filter(e => EVENT_ANSICHTEN(e.id).some(zeigt)).map(e => e.feld);
+  assert.deepEqual([...direkt, ...ueberEvent], []);
+});
+
+test('6d: Links zur Quelle sind nur http oder https', () => {
+  html = ''; klick({nav: 'recipes'});
+  assert.doesNotMatch(html, /href="(?!https?:\/\/)/i);
+  for (const r of rezepte) { html = ''; try { klick({openRecipe: r.id}); } catch {} assert.doesNotMatch(html, /href="(?!https?:\/\/)/i, r.feld); }
+});
+
+test('6e: ein Datensatz mit unbekannter Teigführung legt weder die Event-Liste noch die Rezept-Liste lahm', () => {
+  for (const [nav, id] of [['events', 'ek'], ['recipes', 'rk']]) {
+    html = '';
+    assert.doesNotThrow(() => klick({nav}), nav);
+    assert.ok(html.includes('data-open-' + (nav === 'events' ? 'event' : 'recipe') + '="' + id + '"'), nav + ' zeigt den Eintrag');
+  }
+});

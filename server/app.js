@@ -9,6 +9,7 @@ import {openDb} from './db.js';
 import {mergeSeed} from './seed.js';
 import {ensureAdmin, registerAuth} from './auth.js';
 import {registerPhotos} from './photos.js';
+import {recipeSchema, eventSchema} from './schema.js';
 
 const PUBLIC = fileURLToPath(new URL('../public/', import.meta.url));
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -90,14 +91,14 @@ export async function buildApp({dataDir, logger = false, config = {}} = {}) {
 
   app.get('/api/state', () => ({recipes: recipes.list(), events: events.list()}));
 
-  const body = {
+  const body = data => ({
     type: 'object', required: ['data'], additionalProperties: false,
-    properties: {data: {type: 'object'}, updatedAt: {type: ['integer', 'null']}},
-  };
+    properties: {data, updatedAt: {type: ['integer', 'null']}},
+  });
   const params = {type: 'object', properties: {id: {type: 'string', pattern: ID.source}}};
 
-  for (const [name, s] of [['recipes', recipes], ['events', events]]) {
-    app.put(`/api/${name}/:id`, {schema: {body, params}}, (req, reply) => {
+  for (const [name, s, schema] of [['recipes', recipes, recipeSchema], ['events', events, eventSchema]]) {
+    app.put(`/api/${name}/:id`, {schema: {body: body(schema), params}}, (req, reply) => {
       const r = s.put(req.params.id, req.body.data, req.body.updatedAt ?? null, req.user.id);
       if (!r.ok) return reply.code(409).send({error: 'conflict', current: r.item});
       return reply.code(r.created ? 201 : 200).send(r.item);

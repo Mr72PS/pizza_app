@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev \
  # Früh scheitern, falls die nativen Module für diese Plattform fehlen
- && node -e "new (require('better-sqlite3'))(':memory:').close(); require('argon2')"
+ && node -e "new (require('better-sqlite3'))(':memory:').close(); require('argon2'); require('sharp')"
 
 # ---- Stufe 2: schlankes Laufzeit-Image ----
 FROM node:24-bookworm-slim

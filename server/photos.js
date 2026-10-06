@@ -1,8 +1,27 @@
-/* Fotos zum Backprotokoll: ein JPEG pro Event als Datei im Volume, ausgeliefert hinter der Anmeldung. */
+/* Fotos zum Backprotokoll: ein JPEG pro Event als Datei im Volume, ausgeliefert hinter der Anmeldung.
+   Der Server traut der hochgeladenen Datei nicht: Er dekodiert sie als Bild und speichert nur das, was er selbst neu kodiert hat. */
+import sharp from 'sharp';
 import {writeFile, readFile, unlink} from 'node:fs/promises';
 import {join} from 'node:path';
 
 const MAX_BYTES = 2 * 1024 * 1024;
+// Der Browser verkleinert auf 800 px. Das Limit greift vor dem Dekodieren und stoppt Dekompressionsbomben.
+const MAX_PIXEL = 25_000_000;
+const MAX_KANTE = 1600;
+sharp.cache(false);
+
+/* Liefert ein frisch kodiertes JPEG ohne Metadaten und ohne angehängte Daten, oder null, wenn es kein gültiges JPEG ist. */
+async function neuKodieren(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 4 || buf[0] !== 0xFF || buf[1] !== 0xD8 || buf[2] !== 0xFF) return null;
+  try {
+    const bild = sharp(buf, {limitInputPixels: MAX_PIXEL, failOn: 'error', sequentialRead: true});
+    if ((await bild.metadata()).format !== 'jpeg') return null;
+    // rotate() übernimmt die Drehung aus den EXIF-Daten ins Bild; die Metadaten selbst schreibt sharp nicht mit
+    return await bild.rotate().resize(MAX_KANTE, MAX_KANTE, {fit: 'inside', withoutEnlargement: true}).jpeg({quality: 82}).toBuffer();
+  } catch {
+    return null;
+  }
+}
 
 export function registerPhotos(app, {db, dataDir, idPattern}) {
   const dir = join(dataDir, 'fotos');
@@ -21,16 +40,16 @@ export function registerPhotos(app, {db, dataDir, idPattern}) {
     await unlink(join(dir, row.filename)).catch(() => {});
   }
 
+  // Nur image/jpeg wird überhaupt gelesen, und höchstens MAX_BYTES; alles andere beantwortet Fastify mit 415 oder 413
   app.addContentTypeParser('image/jpeg', {parseAs: 'buffer', bodyLimit: MAX_BYTES}, (req, body, done) => done(null, body));
 
   app.put('/api/events/:id/photo', {schema: {params}}, async (req, reply) => {
-    const b = req.body;
-    // Nur echte JPEG-Dateien annehmen, der Browser verkleinert vorher auf höchstens 800 px
-    if (!Buffer.isBuffer(b) || b.length < 4 || b[0] !== 0xFF || b[1] !== 0xD8 || b[2] !== 0xFF) return reply.code(400).send({error: 'jpeg'});
     if (!q.event.get(req.params.id)) return reply.code(404).send({error: 'notfound'});
-    // Der Dateiname entsteht nur aus der geprüften Event-ID
+    const jpeg = await neuKodieren(req.body);
+    if (!jpeg) return reply.code(400).send({error: 'jpeg'});
+    // Der Dateiname entsteht nur aus der geprüften Event-ID, die Endung setzt der Server
     const filename = req.params.id + '.jpg';
-    await writeFile(join(dir, filename), b);
+    await writeFile(join(dir, filename), jpeg);
     q.put.run(req.params.id, filename, Date.now());
     return reply.code(204).send();
   });
