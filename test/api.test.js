@@ -170,3 +170,11 @@ test('Werte vom falschen Typ werden abgelehnt und nicht gespeichert', async () =
   assert.deepEqual(s.events, []);
   assert.deepEqual(s.recipes.find(r => r.id === 'napo').data, rezept.data);
 });
+
+test('die Oberfläche verbindet sich per fetch nur mit der eigenen API', async () => {
+  // Die CSP erlaubt mit connect-src 'self' nichts anderes; ein fetch auf eine data:-Adresse hat den Foto-Upload blockiert
+  const js = (await app.inject({method: 'GET', url: '/app.js'})).body;
+  const ziele = [...js.matchAll(/\bfetch\(([^,)]+)/g)].map(m => m[1].trim());
+  assert.ok(ziele.length >= 3);
+  for (const z of ziele) assert.match(z, /^(url|fotoUrl\(id)$/, 'fetch(' + z + ')');
+});

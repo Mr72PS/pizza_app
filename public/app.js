@@ -94,7 +94,9 @@ async function saveFoto(id,data){
   fotos[id]=data||null;
   try{
     if(!data){await fetch(fotoUrl(id),{method:'DELETE'}); return;}
-    const blob=await (await fetch(data)).blob();
+    // Die data:-Adresse von Hand in Bytes wandeln: Die Content-Security-Policy erlaubt Verbindungen nur zur eigenen Adresse
+    const bin=atob(data.slice(data.indexOf(',')+1)), bytes=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    const blob=new Blob([bytes],{type:'image/jpeg'});
     const res=await fetch(fotoUrl(id),{method:'PUT',headers:{'content-type':'image/jpeg'},body:blob});
     if(!res.ok) throw new Error('foto '+res.status);
   }catch(e){alert('Das Foto konnte nicht gespeichert werden.');}
