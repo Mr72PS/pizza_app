@@ -110,6 +110,10 @@ export async function buildApp({dataDir, logger = false, config = {}} = {}) {
     });
   }
 
-  app.register(fastifyStatic, {root: PUBLIC});
+  // Die App-Dateien bei jedem Aufruf nachprüfen lassen (ETag), damit ein Update sofort ankommt. Schriften und Bilder ändern sich selten.
+  app.register(fastifyStatic, {
+    root: PUBLIC, cacheControl: false,
+    setHeaders: (reply, pfad) => reply.header('Cache-Control', /\.(woff2|png|webp|svg)$/.test(pfad) ? 'public, max-age=86400' : 'no-cache'),
+  });
   return app;
 }

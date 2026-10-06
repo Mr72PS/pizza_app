@@ -178,3 +178,13 @@ test('die Oberfläche verbindet sich per fetch nur mit der eigenen API', async (
   assert.ok(ziele.length >= 3);
   for (const z of ziele) assert.match(z, /^(url|fotoUrl\(id)$/, 'fetch(' + z + ')');
 });
+
+test('App-Dateien werden bei jedem Aufruf nachgeprüft, damit Updates sofort ankommen', async () => {
+  for (const url of ['/', '/app.js', '/calc.js', '/app.css', '/sw.js', '/manifest.webmanifest']) {
+    const r = await app.inject({method: 'GET', url});
+    assert.equal(r.headers['cache-control'], 'no-cache', url);
+    assert.ok(r.headers.etag, url + ' hat ein ETag');
+    assert.equal((await app.inject({method: 'GET', url, headers: {'if-none-match': r.headers.etag}})).statusCode, 304, url);
+  }
+  assert.equal((await app.inject({method: 'GET', url: '/fonts/instrument-sans.woff2'})).headers['cache-control'], 'public, max-age=86400');
+});

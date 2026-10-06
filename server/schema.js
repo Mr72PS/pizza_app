@@ -40,7 +40,7 @@ export const recipeSchema = {
 
 const haken = {type: 'object', maxProperties: 500, additionalProperties: ja};
 // Gästezahl: eine Zahl oder leer
-const gaeste = {type: ['number', 'string'], minimum: 0, maximum: 1000, pattern: '^[0-9]{0,4}$'};
+const gaeste = {anyOf: [zahl(0, 1000), {type: 'string', pattern: '^[0-9]{0,4}$'}]};
 
 export const eventSchema = {
   type: 'object',

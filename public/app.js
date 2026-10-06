@@ -88,6 +88,7 @@ function methodeOptions(r,sel){
 /* ---------- Fotos zum Backprotokoll ---------- */
 // Als Datei auf dem Server, ein Foto pro Event. `fotos` hält pro Event die Adresse fürs <img>.
 const fotos={};
+const FOTO_FEHLER={400:'Der Server kann die Datei nicht als JPEG lesen.',401:'Du bist nicht mehr angemeldet.',403:'Die Adresse im Browser passt nicht zur Einstellung BASE_URL.',404:'Das Event ist auf dem Server noch nicht gespeichert. Versuche es gleich nochmals.',413:'Das Bild ist grösser als 2 MB.'};
 const fotoUrl=id=>`/api/events/${id}/photo`;
 async function saveFoto(id,data){
   // Bis der Upload durch ist, zeigt die Ansicht das verkleinerte Bild aus dem Formular
@@ -98,8 +99,8 @@ async function saveFoto(id,data){
     const bin=atob(data.slice(data.indexOf(',')+1)), bytes=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
     const blob=new Blob([bytes],{type:'image/jpeg'});
     const res=await fetch(fotoUrl(id),{method:'PUT',headers:{'content-type':'image/jpeg'},body:blob});
-    if(!res.ok) throw new Error('foto '+res.status);
-  }catch(e){alert('Das Foto konnte nicht gespeichert werden.');}
+    if(!res.ok) throw new Error(FOTO_FEHLER[res.status]||'Der Server meldet Fehler '+res.status+'.');
+  }catch(e){alert('Das Foto konnte nicht gespeichert werden. '+(e instanceof TypeError?'Der Server ist nicht erreichbar.':e.message));}
 }
 // Die Zeit des Protokolls hängt an der Adresse, damit ein ersetztes Foto nicht aus dem Cache kommt
 function loadFoto(id){
