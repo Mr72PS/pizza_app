@@ -4,6 +4,14 @@ Teigrezepte, Schritt-für-Schritt-Anleitung und ein Planer, der vom Essenstermin
 
 Die App läuft als einzelner Docker-Container im Heimnetz, zum Beispiel auf einer Synology. Sie bringt ihre eigene Datenbank (SQLite) und eine Benutzerverwaltung mit. Alle Benutzer sehen dieselben Rezepte und Events, die Anmeldung regelt nur den Zugang.
 
+## Was die App kann
+
+- **Events planen:** Termin, Rezept und Anzahl Pizzen eingeben, die App rechnet den Zeitplan zurück und schlägt Varianten vor, wenn ein Schritt in die Nacht fällt. «Nochmals so» plant ein Event mit den Angaben eines früheren.
+- **Anleitung und Einkaufsliste:** Schritt für Schritt durch den Teig, mit Mengen für die gewählte Anzahl und einer Einkaufsliste samt Belägen.
+- **Rezepte:** Vorlagen für verschiedene Teigführungen, dazu eigene Rezepte und solche aus dem Internet.
+- **Backprotokoll:** Nach dem Backen Sterne, Ofenwerte, Notizen und bis zu 10 Fotos festhalten. Die Ofenwerte lassen sich ins Rezept übernehmen.
+- **Galerie:** Alle Fotos aus den Backprotokollen auf einen Blick, das neueste Event zuerst, mit Datum und Bewertung. Ein Tipp öffnet die Grossansicht zum Durchblättern, von dort geht es zum Event.
+
 ## Was du brauchst
 
 - Docker mit Compose (auf der Synology: Container Manager, Dockhand oder Portainer)
