@@ -105,3 +105,8 @@ test('6f: die Galerie zeigt nur Events mit Foto, mit Datum und Bewertung darunte
   assert.match(html, /<button[^>]*data-open-event="e0"[^>]*><img[^>]*src="\/api\/events\/e0\/photo\?v=1"[^>]*><span[^>]*><span>Sa, 5\.1\.2030<\/span><span[^>]*>★ 4<\/span><\/span><\/button>/);
   assert.ok(!html.includes('data-open-event="eo"'), 'Event ohne Foto fehlt');
 });
+
+test('6g: die Event-Liste zeigt das Jahr über dem Datum', () => {
+  html = ''; klick({nav: 'events'});
+  assert.match(html, /<span class="when"><span>2030<\/span>Sa 05\.01\.<span>19:00 Uhr<\/span><\/span>/);
+});
