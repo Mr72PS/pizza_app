@@ -26,7 +26,7 @@ export const recipeSchema = {
     reserve: zahl(-50, 100), stdAnzahl: zahl(1, 200),
     maschine: ja, knetMin: zahl(0, 600),
     bigaKalt: ja, bigaHyd: zahl(0, 200), vtHefe: zahl(0, 100), htHefe: zahl(0, 100),
-    stockMin: zahl(0, 10000), stueckMin: zahl(0, 10000), parkStd: zahl(0, 1000),
+    stockMin: zahl(0, 10000), stueckMin: zahl(0, 10000), parkStd: zahl(0, 1000), optFaltenMin: zahl(0, 10000),
     hefeFix: zahl(0, 100), hefeArt: text(20),
     hefeProLiter: spanne, dauerRange: spanne, dauerMin: zahl(0, 1000),
     autolyseMin: zahl(0, 10000), stockKuehlH: zahl(0, 1000), akklMin: zahl(0, 10000),
@@ -53,7 +53,7 @@ export const eventSchema = {
     recipeId: {type: 'string', pattern: ID},
     methode: {enum: ['', ...METHODEN]},
     anzahl: zahl(1, 200), raumtemp: zahl(-20, 60),
-    maschine: ja, dauer: zahl(0, 1000), park: zahl(0, 1000),
+    maschine: ja, dauer: zahl(0, 1000), park: zahl(0, 1000), extraFalten: ja,
     erw: gaeste, kind: gaeste,
     done: haken,
     shop: {type: 'object', properties: {

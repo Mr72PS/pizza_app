@@ -44,6 +44,18 @@ const SEED = [
      raus:['Box 4 Stunden vor dem Backen aus dem Kühlschrank nehmen und bei Raumtemperatur reifen lassen.','Danach sind die Teiglinge bereit zum Formen und Belegen.']},
    formen:'Von Hand formen, Rand freilassen, belegen und in den Ofen.',
    notiz:'Community-Rezept von Sven (Teichners) für Pizza napoletana mit kalter Teigführung. Original für 3 Teiglinge à ca. 280 g: 500 g Weizenmehl Type 00, 320 g kaltes Wasser, 1,5 g frische oder 0,5 g trockene Hefe, 15 g feines Meersalz. Ablauf über drei Tage: 24 h im Ganzen und 20 h als Teiglinge im Kühlschrank, dann 4 h bei Raumtemperatur.'},
+  {id:'lewizza51', name:'100 % Biga, 51 h (nach Lewizza)', methode:'biga', bigaKalt:true, dauer:27, ballen:280, hyd:68, salz:2.95, oel:0, zucker:0,
+   anteil:100, bigaHyd:57.8, vtHefe:0.3, htHefe:0, reserve:0.1, stdAnzahl:6, stockMin:85, optFaltenMin:35, stockKuehlH:21, ballNachKuehl:true, stueckMin:190, knetMin:15, parkStd:0,
+   wasserVT:'kaltes Wasser', wasserHT:'kaltes Wasser',
+   oben:'450 (max.)', unten:'430–450', backMin:2, backMax:3,
+   txt:{
+     vorteig:['Hefe im Wasser auflösen, zum Mehl geben und grob vermengen, bis kein trockenes Mehl mehr da ist.','Zugedeckt 3 Stunden bei Raumtemperatur ruhen lassen, dann 24 Stunden in den Kühlschrank.'],
+     kneten:['Das Salz im kalten Wasser auflösen.','Zur Biga geben und von Hand einarbeiten, bis kein Wasser mehr sichtbar ist. Mit der Knetmaschine geht es auch.'],
+     stock:['45 Minuten zugedeckt bei Raumtemperatur ruhen lassen.','Kurz kneten, falten und rund schleifen.','30 Minuten zugedeckt ruhen lassen.','Nochmals dehnen, falten und rund schleifen.'],
+     kuehl:['Den Behälter leicht mit Olivenöl ölen und den Teig als Ganzes hineinlegen.','Zugedeckt 21 Stunden in den Kühlschrank stellen.'],
+     ballen:['Zugedeckt 3 Stunden bei Raumtemperatur gehen lassen.']},
+   formen:'Von Hand formen, nie mit dem Nudelholz: mit den Fingerspitzen von der Mitte nach aussen drücken, Rand freilassen, dann auf Grösse ziehen.',
+   notiz:'Community-Rezept von @lewizza_macht_pizza (Instagram). Original für 6 Teiglinge à 280 g: 982 g Mehl, 668 g kaltes Wasser (568 g für die Biga, 100 g für den Hauptteig), 29 g Salz, 3 g Frischhefe. Olivenöl nur zum Ölen des Behälters. Ruhezeiten zusammen 52 h 15 min, der Autor nennt gerundet 51 h. Mehl: beste Ergebnisse mit Caputo Nuvola, Friessinger La Farina 14 oder Das Mehl. Ebenfalls geeignet: Molino UniquaBlu Tipo 1, Caputo Tipo 1, Caputo Manitoba, Costa Amalfi Molino Pizzuti, Caputo Chef, Lidl Nuvola. Lidl Doppio Zero funktioniert, Lidl Nuvola ist zuverlässiger.'},
   {id:'napo', name:'Napoletana', methode:'direkt', dauer:10, ballen:280, hyd:62, salz:2.6, oel:0, zucker:0, anteil:40,
    oben:'450 (max.)', unten:'430–450', backMin:2, backMax:3,
    formen:'Von Hand formen, nie mit dem Nudelholz: mit den Fingerspitzen von der Mitte nach aussen drücken, 1–1,5 cm Rand freilassen, dann auf Grösse ziehen.',
@@ -108,7 +120,7 @@ const hefeName=r=>r.hefeArt==='trocken'?'Trockenhefe':'Frische Hefe';
 function span(min){const h=Math.floor(min/60), m=Math.round(min%60); return ((h?h+' h ':'')+(m||!h?m+' min':'')).trim();}
 
 /* Mehl-Empfehlung: eine Zeile pro Mehl, «50 % Name» wird in Gramm umgerechnet */
-const SEED_MEHL={svens48:'Weizenmehl Tipo 00',biga100:'50 % Caputo Pizzeria «Tipo 00»\n50 % Caputo Nuvola «Tipo 0»'};
+const SEED_MEHL={svens48:'Weizenmehl Tipo 00',lewizza51:'Tipo 0, 00 oder 1, mindestens 12 g Eiweiss pro 100 g',biga100:'50 % Caputo Pizzeria «Tipo 00»\n50 % Caputo Nuvola «Tipo 0»'};
 function mehlOf(r){const t=String(r.mehl??SEED_MEHL[r.id]??''); const mix=[],notes=[];
   t.split('\n').map(l=>l.trim()).filter(Boolean).forEach(l=>{const m=l.match(/^(\d+(?:[.,]\d+)?)\s*%\s*(.+)$/); m?mix.push({p:Number(m[1].replace(',','.')),n:m[2]}):notes.push(l);});
   return {mix,notes,text:t};}
@@ -119,7 +131,7 @@ const KURZ={direkt:'Direkt, ohne Vorteig',kuehl:'Kaltführung',poolish:'Mit Pool
 function eff(r,o){
   const m=o&&o.methode; if(!r||!m||m===r.methode) return r;
   const x={...r,methode:m,dauer:DEF_DAUER[m]};
-  for(const k of ['txt','vtHefe','htHefe','stockMin','stueckMin','knetMin','wasserVT','wasserHT','parkStd','bigaHyd','hefeProLiter','dauerRange','hefeFix','autolyseMin','stockKuehlH','akklMin','hefeArt','dauerMin','aktivMin','ballNachKuehl','stockRtMin','stdAnzahl']) delete x[k];
+  for(const k of ['txt','vtHefe','htHefe','stockMin','stueckMin','knetMin','wasserVT','wasserHT','parkStd','bigaHyd','hefeProLiter','dauerRange','hefeFix','autolyseMin','stockKuehlH','akklMin','hefeArt','dauerMin','aktivMin','ballNachKuehl','stockRtMin','stdAnzahl','optFaltenMin']) delete x[k];
   if(m==='biga'){x.bigaKalt=true; x.anteil=40;}
   return x;
 }
@@ -163,16 +175,18 @@ function plan(r,o){
       {k:'raus',t:out,min:akk,ttl:'Teiglinge aus dem Kühlschrank',d:T.raus||['Box geschlossen bei Raumtemperatur akklimatisieren lassen.','Reif, wenn ein Fingerdruck langsam zurückfedert. Springt er sofort zurück: 30–60 min länger warten.']});
   } else {
     const isP=r.methode==='poolish', nm=isP?'Poolish':'Biga';
-    const stueck=r.stueckMin||180, stockMin=r.stockMin||60, park=Math.max(0,Number(o.park??r.parkStd)||0)*60;
-    const tPark=add(B,-park), tB=add(tPark,-stueck), tS=add(tB,-stockMin), tM=add(tS,-knet), tP=add(tM,-D*60);
+    const falten=o.extraFalten?(r.optFaltenMin||0):0, sk=r.ballNachKuehl?(r.stockKuehlH||0):0;
+    const stueck=r.stueckMin||180, stockMin=(r.stockMin||60)+falten, park=Math.max(0,Number(o.park??r.parkStd)||0)*60;
+    const tPark=add(B,-park), tB=add(tPark,-stueck), tF=add(tB,-sk*60), tS=add(tF,-stockMin), tM=add(tS,-knet), tP=add(tM,-D*60);
     const pct=r.vtHefe??(isP?interp(POOLISH_HEFE,D)*tf(raum):(r.bigaKalt?1.0:Math.min(Math.max(1.0*tf(raum,17)*Math.pow(17/D,1.5),0.3),1.5)));
     pf={nm,isP,pct,anteil:(r.anteil||40)/100,fin:r.htHefe??0.1};
     hefePct=pct*pf.anteil+pf.fin;
-    info=`${nm} ${g(D)} h, Teiglinge ${span(stueck)} bei Raumtemperatur`+(park?`, danach ${span(park)} im Kühlschrank`:'');
+    info=`${nm} ${g(D)} h, `+(sk?`${g(sk)} h im Ganzen im Kühlschrank, `:'')+`Teiglinge ${span(stueck)} bei Raumtemperatur`+(park?`, danach ${span(park)} im Kühlschrank`:'');
     steps.push({k:'vorteig',t:tP,min:D*60,ttl:nm+' ansetzen'},
       {k:'kneten',t:tM,min:knet,ttl:pf.anteil>=1?'Biga zum Teig kneten':'Hauptteig kneten'},
-      {k:'stock',t:tS,min:stockMin,ttl:T.stock?'Dehnen, falten, ruhen lassen':'Stockgare',d:T.stock||['Teig im Ganzen, abgedeckt, bei Raumtemperatur stehen lassen.']},
-      {k:'ballen',t:tB,min:stueck,ttl:'Teiglinge formen',d:[ball].concat(T.ballen||['In die Teigbox, abgedeckt, 3 h bei Raumtemperatur reifen lassen.','Reif, wenn die Teiglinge luftig sind und ein Fingerdruck langsam zurückfedert.'])});
+      {k:'stock',t:tS,min:stockMin,ttl:T.stock?'Dehnen, falten, ruhen lassen':'Stockgare',d:(T.stock||['Teig im Ganzen, abgedeckt, bei Raumtemperatur stehen lassen.']).concat(falten?[`Zusätzliche Runde für mehr Luftigkeit (${span(falten)}): nochmals zugedeckt ruhen lassen, dann dehnen, falten und rund schleifen.`]:[])},
+      {k:'ballen',t:tB,min:stueck,ttl:sk?'Aus dem Kühlschrank, sofort portionieren':'Teiglinge formen',d:[sk?'Teig direkt aus dem Kühlschrank nehmen. '+ball:ball].concat(T.ballen||['In die Teigbox, abgedeckt, 3 h bei Raumtemperatur reifen lassen.','Reif, wenn die Teiglinge luftig sind und ein Fingerdruck langsam zurückfedert.'])});
+    if(sk) steps.push({k:'kuehl',t:tF,min:sk*60,ttl:'Teig in den Kühlschrank',d:T.kuehl||['Teig im Ganzen zugedeckt in den Kühlschrank stellen.']});
     if(park) steps.push({k:'park',t:tPark,min:park,ttl:'Teiglinge in den Kühlschrank',d:['Die aufgegangenen Teiglinge im geschlossenen Behälter in den Kühlschrank stellen.','Zum Backen direkt aus dem Kühlschrank zu Pizza formen, nicht akklimatisieren.']});
   }
 
@@ -232,7 +246,7 @@ function plan(r,o){
 function vorschlaege(R,e){
   const p0=plan(R,e); if(!p0.nacht&&!p0.past) return [];
   const M=METHODEN[R.methode], vt=R.methode==='biga'||R.methode==='poolish';
-  let lo=M.min, hi=M.max; if(R.dauerRange){lo=R.dauerRange[0]; hi=R.dauerRange[1];} if(R.stockKuehlH) lo=Math.max(lo,R.stockKuehlH+4); if(R.dauerMin) lo=Math.max(lo,R.dauerMin);
+  let lo=M.min, hi=M.max; if(R.dauerRange){lo=R.dauerRange[0]; hi=R.dauerRange[1];} if(R.stockKuehlH&&!vt) lo=Math.max(lo,R.stockKuehlH+4); if(R.dauerMin) lo=Math.max(lo,R.dauerMin);
   const cD=Number(e.dauer)||R.dauer, cP=Number(e.park??R.parkStd)||0, ok=[];
   for(let D=lo;D<=hi;D++) for(let P=0;P<=(vt?12:0);P++){
     if(D===cD&&P===cP) continue;

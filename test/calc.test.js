@@ -24,6 +24,8 @@ const TABELLE = [
   // Rezept, Pizzen, Zusatz, Mehl, Wasser, Salz, Hefe, Start, Schlüssel und Titel des ersten Schritts
   ['biga100', 3, {park: 6}, '500', '325', '14.0', '4.00', 'Fr 18:52', 'vorteig', 'Biga ansetzen'],
   ['biga100', 6, {}, '1000', '650', '28.0', '8.00', 'Sa 00:52', 'vorteig', 'Biga ansetzen'],
+  ['lewizza51', 6, {}, '982', '668', '29.0', '2.95', 'Do 14:07', 'vorteig', 'Biga ansetzen'],
+  ['lewizza51', 6, {extraFalten: true}, '982', '668', '29.0', '2.95', 'Do 13:32', 'vorteig', 'Biga ansetzen'],
   ['donkarl', 4, {}, '500', '340', '15.0', '7.00', 'Fr 14:49', 'aktiv', 'Hefe ansetzen'],
   ['svens48', 3, {}, '500', '320', '15.0', '1.50', 'Do 18:12', 'autolyse', 'Mehl und Wasser mischen (Autolyse)'],
   ['avpn', 3, {}, '529', '311', '15.6', '0.42', 'Fr 18:27', 'kneten', 'Teig kneten'],
@@ -71,6 +73,34 @@ test('biga100, 3 Pizzen, park 6: vollständige Schrittfolge und Mengen', () => {
   assert.equal(g(p.m.salz), '14');
   assert.equal(p.steps[0].d[0], '500 g Mehl (250 g Caputo Pizzeria «Tipo 00», 250 g Caputo Nuvola «Tipo 0»), 225 g kaltes Wasser, 4.0 g frische Hefe, oder 1.33 g Instanthefe.');
   assert.equal(p.steps[1].d[0], '100 g eiskaltes Wasser, 14.0 g Salz.');
+});
+
+test('lewizza51, 6 Pizzen: Hauptteig kühlt im Ganzen, portioniert wird danach', () => {
+  const p = rechne('lewizza51', 6);
+  assert.deepEqual(ablauf(p), [
+    'Do 14:07 vorteig', 'Fr 17:07 kneten', 'Fr 17:22 stock', 'Fr 18:47 kuehl',
+    'Sa 15:47 ballen', 'Sa 18:12 ofen', 'Sa 18:57 backen',
+  ]);
+  assert.equal(p.steps[4].ttl, 'Aus dem Kühlschrank, sofort portionieren');
+  assert.equal(g(p.pf.wasser), '568');
+  assert.equal(p.steps[0].d[0], '982 g Mehl, 568 g kaltes Wasser, 2.9 g frische Hefe, oder 0.98 g Instanthefe.');
+  assert.equal(p.steps[1].d[0], '100 g kaltes Wasser, 29.0 g Salz.');
+  assert.equal(p.nacht, false);
+  assert.deepEqual(p.warn, []);
+});
+
+test('lewizza51 mit zusätzlicher Faltrunde: 35 min früher starten, Kühlphase bleibt', () => {
+  const p = rechne('lewizza51', 6, {extraFalten: true});
+  assert.deepEqual(ablauf(p), [
+    'Do 13:32 vorteig', 'Fr 16:32 kneten', 'Fr 16:47 stock', 'Fr 18:47 kuehl',
+    'Sa 15:47 ballen', 'Sa 18:12 ofen', 'Sa 18:57 backen',
+  ]);
+  assert.equal(p.steps[2].min, 120);
+  assert.match(p.steps[2].d.at(-1), /^Zusätzliche Runde für mehr Luftigkeit \(35 min\)/);
+});
+
+test('extraFalten wirkt nur bei Rezepten mit optionaler Faltrunde', () => {
+  assert.deepEqual(ablauf(rechne('biga100', 3, {park: 6, extraFalten: true})), ablauf(rechne('biga100', 3, {park: 6})));
 });
 
 test('donkarl, 4 Pizzen: vollständige Schrittfolge und Zusätze', () => {

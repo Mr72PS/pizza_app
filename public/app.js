@@ -133,8 +133,8 @@ const QUELLEN={
 };
 const IMG_KOPF='/img/kopf.webp';
 const IMG_SIEGEL='/img/siegel.webp';
-const SEED_QUELLE={donkarl:'mein',biga100:'mein',avpn:'web',svens48:'web'};
-const SEED_URL={svens48:'https://www.teichners.de/blogs/blog/der-absolute-favorit-svens-48-stunden-pizzateig-rezept',avpn:'https://www.pizzanapoletana.org/public/pdf/Disciplinare-2024-ENG.pdf'};
+const SEED_QUELLE={donkarl:'mein',biga100:'mein',avpn:'web',svens48:'web',lewizza51:'web'};
+const SEED_URL={lewizza51:'https://www.instagram.com/lewizza_macht_pizza/',svens48:'https://www.teichners.de/blogs/blog/der-absolute-favorit-svens-48-stunden-pizzateig-rezept',avpn:'https://www.pizzanapoletana.org/public/pdf/Disciplinare-2024-ENG.pdf'};
 function src(r){return (r.quelle&&QUELLEN[r.quelle]?r.quelle:null)||SEED_QUELLE[r.id]||(SEED.some(x=>x.id===r.id)?'vorlage':'mein');}
 function srcUrl(r){const u=r.quelleUrl??SEED_URL[r.id]??''; return /^https?:\/\//i.test(u)?u:'';}
 function srcIcon(r){const q=src(r);
@@ -250,6 +250,7 @@ function viewEventForm(){
       <span class="hint">Aus dem Rezept übernommen. Hier nur für diesen Event ändern, zum Beispiel wenn ein Schritt in die Nacht fällt.</span></label>
     <label id="parkRow" ${vt?'':'hidden'}>Fertige Teiglinge im Kühlschrank parken, in Stunden<input type="number" name="park" min="0" max="24" step="0.5" value="${esc(v.park??0)}" inputmode="decimal">
       <span class="hint">0 heisst: direkt nach der Gare backen. Mit Parkzeit beginnt alles entsprechend früher, und die Teiglinge kommen kalt aus dem Kühlschrank auf den Schieber.</span></label>
+    ${er.optFaltenMin?`<label class="check"><input type="checkbox" name="extraFalten" ${v.extraFalten?'checked':''}>Zusätzlich dehnen und falten (+${esc(span(er.optFaltenMin))}, für mehr Luftigkeit)</label>`:''}
     <label class="check"><input type="checkbox" name="maschine" ${v.maschine?'checked':''}>Ich knete mit der Küchenmaschine</label>
     <div class="row"><button class="btn primary grow" type="submit">${e?'Änderungen speichern':'Zeitplan berechnen'}</button></div>
   </form>`;
@@ -512,7 +513,7 @@ document.addEventListener('click',ev=>{
   if('lbZu' in d) return lbZu();
   if(d.zumEvent) return go('event',d.zumEvent,{von:'galerie'});
   if(d.again){const e=state.events.find(x=>x.id===d.again); if(!e) return;
-    ui.preRecipe=null; ui.draft={name:e.name||'',essen:toInput(naechsterSamstag()),recipeId:e.recipeId,methode:e.methode||'',anzahl:e.anzahl,raumtemp:e.raumtemp,maschine:!!e.maschine,dauer:e.dauer,park:e.park,erw:e.erw??'',kind:e.kind??''};
+    ui.preRecipe=null; ui.draft={name:e.name||'',essen:toInput(naechsterSamstag()),recipeId:e.recipeId,methode:e.methode||'',anzahl:e.anzahl,raumtemp:e.raumtemp,maschine:!!e.maschine,dauer:e.dauer,park:e.park,extraFalten:!!e.extraFalten,erw:e.erw??'',kind:e.kind??''};
     return go('eventForm',null);}
   if('logout' in d){api('POST','/api/logout').finally(()=>location.reload()); return;}
   if(d.userPw){const u=ui.users.find(x=>x.id===Number(d.userPw)), pw=prompt(`Neues Passwort für «${u.username}» (mindestens 8 Zeichen). Die Person wird überall abgemeldet.`); if(pw) changeUser('PATCH',u.id,{password:pw},`Das Passwort von «${u.username}» ist neu gesetzt.`); return;}
@@ -565,8 +566,8 @@ document.addEventListener('change',async ev=>{
   const f=ev.target.form; if(!f) return;
   if(f.id==='eventForm'&&(ev.target.name==='recipeId'||ev.target.name==='methode')){
     const v=Object.fromEntries(new FormData(f)), r=recipe(v.recipeId);
-    v.maschine=!!v.maschine;
-    if(ev.target.name==='recipeId'){v.methode=''; v.maschine=!!r.maschine;}
+    v.maschine=!!v.maschine; v.extraFalten=!!v.extraFalten;
+    if(ev.target.name==='recipeId'){v.methode=''; v.maschine=!!r.maschine; v.extraFalten=false;}
     const er=eff(r,v); v.dauer=er.dauer; v.park=(er.methode==='biga'||er.methode==='poolish')?(er.parkStd||0):0;
     ui.draft=v; return render();
   }
@@ -584,7 +585,7 @@ document.addEventListener('submit',ev=>{
   if(f.id==='userForm') return doUser(v);
   if(f.id==='eventForm'){
     const r=eff(recipe(v.recipeId),v), dauer=Number(v.dauer)||r.dauer;
-    const data={name:v.name.trim(),essen:v.essen,recipeId:v.recipeId,methode:v.methode||'',anzahl:Math.max(1,Number(v.anzahl)||3),raumtemp:Number(v.raumtemp)||21,maschine:!!v.maschine,dauer,park:Math.max(0,Number(String(v.park||0).replace(',','.'))||0),erw:v.erw===''?'':Math.max(0,Number(v.erw)||0),kind:v.kind===''?'':Math.max(0,Number(v.kind)||0)};
+    const data={name:v.name.trim(),essen:v.essen,recipeId:v.recipeId,methode:v.methode||'',anzahl:Math.max(1,Number(v.anzahl)||3),raumtemp:Number(v.raumtemp)||21,maschine:!!v.maschine,dauer,park:Math.max(0,Number(String(v.park||0).replace(',','.'))||0),extraFalten:!!(v.extraFalten&&r.optFaltenMin),erw:v.erw===''?'':Math.max(0,Number(v.erw)||0),kind:v.kind===''?'':Math.max(0,Number(v.kind)||0)};
     let e=ui.id&&state.events.find(x=>x.id===ui.id);
     if(e){ if(e.recipeId!==data.recipeId||(e.methode||'')!==data.methode) e.done={}; Object.assign(e,data); } else { e={id:uid(),done:{},...data}; state.events.push(e); }
     ui.draft=null; save(); go('event',e.id);
