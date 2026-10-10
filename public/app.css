@@ -122,7 +122,8 @@ a{color:inherit}
 .galerie{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(2,1fr);gap:14px 12px}
 .galerie button{display:block;width:100%;padding:0;border:0;background:none;color:inherit;text-align:left}
 .galerie img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:14px;background:var(--surface)}
-.galerie span{display:block;margin-top:6px}
+.galerie .gz{display:flex;justify-content:space-between;gap:8px;margin-top:6px}
+.galerie .gs{color:var(--tomato);font-weight:700;white-space:nowrap}
 .card{background:var(--surface);border-radius:16px;padding:16px;margin-top:6px}
 /* Formular */
 form{display:grid;gap:16px}

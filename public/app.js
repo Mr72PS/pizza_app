@@ -177,8 +177,9 @@ function viewGalerie(){
   const evs=state.events.filter(e=>e.log&&e.log.foto).sort((a,b)=>(new Date(b.essen)-new Date(a.essen))||0);
   evs.forEach(e=>loadFoto(e.id));
   const datum=e=>{const d=new Date(e.essen); return isNaN(d)?'':`${TAGE[d.getDay()]}, ${d.getDate()}.${d.getMonth()+1}.${d.getFullYear()}`;};
+  const stern=e=>{const n=Math.min(5,Math.max(0,Math.round(Number(e.log.sterne))||0)); return n?`<span class="gs" role="img" aria-label="${n} von 5 Sternen">★ ${n}</span>`:'';};
   return `<div class="top"><h1>Galerie</h1></div>
-  ${evs.length?`<ul class="galerie">${evs.filter(e=>fotos[e.id]).map(e=>`<li><button data-open-event="${esc(e.id)}"><img src="${esc(fotos[e.id])}" alt="Foto: ${esc(e.name||'Pizza-Abend')}" loading="lazy"><span class="small muted">${datum(e)}</span></button></li>`).join('')}</ul>`:'<p class="empty">Noch keine Fotos. Füge im Backprotokoll eines Events ein Foto hinzu.</p>'}`;
+  ${evs.length?`<ul class="galerie">${evs.filter(e=>fotos[e.id]).map(e=>`<li><button data-open-event="${esc(e.id)}"><img src="${esc(fotos[e.id])}" alt="Foto: ${esc(e.name||'Pizza-Abend')}" loading="lazy"><span class="gz small muted"><span>${datum(e)}</span>${stern(e)}</span></button></li>`).join('')}</ul>`:'<p class="empty">Noch keine Fotos. Füge im Backprotokoll eines Events ein Foto hinzu.</p>'}`;
 }
 
 function viewEventForm(){

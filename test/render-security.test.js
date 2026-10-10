@@ -98,10 +98,10 @@ test('6e: ein Datensatz mit unbekannter Teigführung legt weder die Event-Liste 
   }
 });
 
-test('6f: die Galerie zeigt nur Events mit Foto, mit Datum darunter und ohne gespeicherte Texte als HTML', () => {
+test('6f: die Galerie zeigt nur Events mit Foto, mit Datum und Bewertung darunter und ohne gespeicherte Texte als HTML', () => {
   html = '';
   assert.doesNotThrow(() => klick({nav: 'galerie'}));
   assert.ok(!html.includes(LECK), 'kein Feld kommt als HTML an');
-  assert.match(html, /<button[^>]*data-open-event="e0"[^>]*><img[^>]*src="\/api\/events\/e0\/photo\?v=1"[^>]*><span[^>]*>Sa, 5\.1\.2030<\/span><\/button>/);
+  assert.match(html, /<button[^>]*data-open-event="e0"[^>]*><img[^>]*src="\/api\/events\/e0\/photo\?v=1"[^>]*><span[^>]*><span>Sa, 5\.1\.2030<\/span><span[^>]*>★ 4<\/span><\/span><\/button>/);
   assert.ok(!html.includes('data-open-event="eo"'), 'Event ohne Foto fehlt');
 });
