@@ -104,7 +104,7 @@ test('6f: die Galerie zeigt jedes Foto als Kachel, mit Datum und Bewertung darun
   html = '';
   assert.doesNotThrow(() => klick({nav: 'galerie'}));
   assert.ok(!html.includes(LECK), 'kein Feld kommt als HTML an');
-  for (const pid of ['f1', 'f2']) assert.match(html, new RegExp(`<button[^>]*data-lb-e="e0"[^>]*data-lb-p="${pid}"[^>]*><img[^>]*src="/api/events/e0/photos/${pid}"[^>]*><span[^>]*><span>Sa, 5\\.1\\.2030</span><span[^>]*>★ 4</span></span></button>`));
+  for (const pid of ['f1', 'f2']) assert.match(html, new RegExp(`<button[^>]*data-lb-e="e0"[^>]*data-lb-p="${pid}"[^>]*><img[^>]*src="/api/events/e0/photos/${pid}[?]klein=1"[^>]*><span[^>]*><span>Sa, 5\\.1\\.2030</span><span[^>]*>★ 4</span></span></button>`));
   assert.ok(!html.includes('data-lb-e="eo"'), 'Event ohne Foto fehlt');
 });
 
@@ -128,7 +128,9 @@ test('6h: Grossansicht blättert durch die Galerie oder durch die Fotos eines Ev
 
 test('6i: das Event zeigt alle seine Fotos, das Protokollformular jedes mit eigenem Entfernen-Knopf', () => {
   html = ''; klick({openEvent: 'e0'});
-  for (const pid of ['f1', 'f2']) assert.ok(html.includes(`src="/api/events/e0/photos/${pid}"`), pid);
+  for (const pid of ['f1', 'f2']) assert.ok(html.includes(`src="/api/events/e0/photos/${pid}?klein=1"`), pid);
+  klick({openEvent: 'e2'});
+  assert.ok(html.includes('src="/api/events/e2/photos/f1"'), 'ein einzelnes Foto in voller Grösse');
   klick({log: 'e0'});
   for (const pid of ['f1', 'f2']) assert.ok(html.includes(`data-foto-del="${pid}"`), pid);
   assert.match(html, /<input type="file" id="fotoIn"[^>]*multiple/);
@@ -148,4 +150,14 @@ test('6j: «Nochmals so» öffnet ein neues Event mit den Angaben des alten und 
 test('6g: die Event-Liste zeigt das Jahr über dem Datum', () => {
   html = ''; klick({nav: 'events'});
   assert.match(html, /<span class="when"><span>2030<\/span>Sa 05\.01\.<span>19:00 Uhr<\/span><\/span>/);
+});
+
+test('6k: ein Event mit unbekannter Teigführung lässt sich öffnen, es gilt die Teigführung des Rezepts', () => {
+  for (const ansicht of EVENT_ANSICHTEN('ek').slice(0, 6)) {
+    html = '';
+    assert.doesNotThrow(() => klick(ansicht), JSON.stringify(ansicht));
+    assert.ok(html.length > 200, JSON.stringify(ansicht) + ' zeigt etwas an');
+  }
+  klick({openEvent: 'ek'});
+  assert.ok(html.includes('Zeitplan') && html.includes('data-toggle='), 'mit Zeitplan');
 });

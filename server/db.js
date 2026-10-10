@@ -56,7 +56,7 @@ function fotosUmstellen(db) {
 }
 
 export function openDb(dataDir) {
-  mkdirSync(join(dataDir, 'fotos'), {recursive: true});
+  for (const ordner of ['fotos', 'vorschau']) mkdirSync(join(dataDir, ordner), {recursive: true});
   const db = new Database(join(dataDir, 'pizza_app.sqlite'));
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');

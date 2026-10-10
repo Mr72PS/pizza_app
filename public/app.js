@@ -1,6 +1,6 @@
 import {SEED, METHODEN, TAGE, TAGE_LANG, BELAEGE, SEED_MEHL, DEF_DAUER, KURZ,
   p2, hm, dm, dayKey, g, add, toInput, interp, tf, hefeTxt, tl, oelA, zuA, hefeName, span,
-  mehlOf, mehlTxt, eff, plan, vorschlaege, belagOf, einkauf, gastCalc, gastTxt} from './calc.js';
+  mehlOf, mehlTxt, eff as effCalc, plan, vorschlaege, belagOf, einkauf, gastCalc, gastTxt} from './calc.js';
 
 let state={recipes:[], events:[]};
 let ui={view:'events', id:null, step:0, calcN:3, calcM:'', draft:null};
@@ -79,6 +79,8 @@ async function refresh(){
 /* ---------- Helfer ---------- */
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const recipes=()=>state.recipes;
+// Eine Teigführung am Event, die es nicht gibt, zählt wie «wie im Rezept»
+const eff=(r,o)=>effCalc(r,o&&o.methode&&!METHODEN[o.methode]?{...o,methode:''}:o);
 const meth=m=>METHODEN[m]||METHODEN.direkt;
 const recipe=id=>recipes().find(r=>r.id===id);
 const uid=()=>Math.random().toString(36).slice(2,10);
@@ -95,6 +97,8 @@ const fotoLokal={};
 const FOTO_FEHLER={400:'Der Server kann die Datei nicht als JPEG lesen.',401:'Du bist nicht mehr angemeldet.',403:'Die Adresse im Browser passt nicht zur Einstellung BASE_URL.',404:'Das Event ist auf dem Server noch nicht gespeichert. Versuche es gleich nochmals.',409:'Dieses Event hat schon '+MAX_FOTOS+' Fotos.',413:'Das Bild ist grösser als 2 MB.'};
 const fotoUrl=(id,pid)=>`/api/events/${encodeURIComponent(id)}/photos/${encodeURIComponent(pid)}`;
 const fotoSrc=(id,pid)=>fotoLokal[pid]||fotoUrl(id,pid);
+// Für die Kacheln reicht das Vorschaubild
+const fotoKlein=(id,pid)=>fotoLokal[pid]||fotoUrl(id,pid)+'?klein=1';
 const fotosOf=id=>fotoIds[id]||[];
 async function saveFoto(id,pid,data){
   fotoLokal[pid]=data; fotoIds[id]=[...fotosOf(id),pid]; fotoBusy++;
@@ -185,7 +189,7 @@ const fotoStern=e=>{const n=Math.min(5,Math.max(0,Math.round(Number((e.log||{}).
 function viewGalerie(){
   const l=galerieListe();
   return `<div class="top"><h1>Galerie</h1></div>
-  ${l.length?`<ul class="galerie">${l.map(({e,p})=>`<li><button data-lb-e="${esc(e.id)}" data-lb-p="${esc(p)}" data-lb-alle="1"><img src="${esc(fotoSrc(e.id,p))}" alt="Foto: ${esc(e.name||'Pizza-Abend')}" loading="lazy"><span class="gz small muted"><span>${fotoDatum(e)}</span>${fotoStern(e)}</span></button></li>`).join('')}</ul>`:'<p class="empty">Noch keine Fotos. Füge im Backprotokoll eines Events ein Foto hinzu.</p>'}`;
+  ${l.length?`<ul class="galerie">${l.map(({e,p})=>`<li><button data-lb-e="${esc(e.id)}" data-lb-p="${esc(p)}" data-lb-alle="1"><img src="${esc(fotoKlein(e.id,p))}" alt="Foto: ${esc(e.name||'Pizza-Abend')}" loading="lazy"><span class="gz small muted"><span>${fotoDatum(e)}</span>${fotoStern(e)}</span></button></li>`).join('')}</ul>`:'<p class="empty">Noch keine Fotos. Füge im Backprotokoll eines Events ein Foto hinzu.</p>'}`;
 }
 
 /* Grossansicht: blättert durch die ganze Galerie oder, aus einem Event geöffnet, nur durch dessen Fotos.
@@ -292,7 +296,7 @@ function viewEvent(){
 // Ein einzelnes Foto in voller Breite, mehrere als Raster; Antippen öffnet die Grossansicht
 function eventFotos(e){
   const ids=fotosOf(e.id); if(!ids.length) return '';
-  return `<ul class="galerie${ids.length===1?' eins':''}" style="margin:10px 0">${ids.map(p=>`<li><button data-lb-e="${esc(e.id)}" data-lb-p="${esc(p)}"><img src="${esc(fotoSrc(e.id,p))}" alt="Foto vom Pizza-Abend" loading="lazy"></button></li>`).join('')}</ul>`;
+  return `<ul class="galerie${ids.length===1?' eins':''}" style="margin:10px 0">${ids.map(p=>`<li><button data-lb-e="${esc(e.id)}" data-lb-p="${esc(p)}"><img src="${esc((ids.length===1?fotoSrc:fotoKlein)(e.id,p))}" alt="Foto vom Pizza-Abend" loading="lazy"></button></li>`).join('')}</ul>`;
 }
 
 function viewShop(){
@@ -314,7 +318,7 @@ function viewShop(){
 
 // Fotos im Formular: die gespeicherten ohne die zum Entfernen vorgemerkten, dazu die frisch gewählten
 function fotoWahl(e){
-  return [...fotosOf(e.id).filter(p=>!(ui.fotoWeg||[]).includes(p)).map(p=>({id:p,src:fotoSrc(e.id,p)})),...(ui.fotoNeu||[]).map(n=>({id:n.id,src:n.data}))];
+  return [...fotosOf(e.id).filter(p=>!(ui.fotoWeg||[]).includes(p)).map(p=>({id:p,src:fotoKlein(e.id,p)})),...(ui.fotoNeu||[]).map(n=>({id:n.id,src:n.data}))];
 }
 function fotoBox(e){
   const l=fotoWahl(e);

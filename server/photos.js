@@ -9,6 +9,8 @@ const MAX_BYTES = 2 * 1024 * 1024;
 const MAX_PIXEL = 25_000_000;
 const MAX_KANTE = 1600;
 const MAX_PRO_EVENT = 10;
+// Kantenlänge der quadratischen Vorschaubilder für die Kacheln: rund 160 px breit, auf dem Handy mit dreifacher Pixeldichte
+const MAX_VORSCHAU = 480;
 sharp.cache(false);
 
 /* Liefert ein frisch kodiertes JPEG ohne Metadaten und ohne angehängte Daten, oder null, wenn es kein gültiges JPEG ist. */
@@ -25,7 +27,7 @@ async function neuKodieren(buf) {
 }
 
 export function registerPhotos(app, {db, dataDir, idPattern}) {
-  const dir = join(dataDir, 'fotos');
+  const dir = join(dataDir, 'fotos'), kleinDir = join(dataDir, 'vorschau');
   const id = {type: 'string', pattern: idPattern};
   const params = {type: 'object', properties: {id, pid: id}};
   const q = {
@@ -43,6 +45,27 @@ export function registerPhotos(app, {db, dataDir, idPattern}) {
     if (!row) return;
     q.del.run(eventId, photoId);
     await unlink(join(dir, row.filename)).catch(() => {});
+    await unlink(join(kleinDir, row.filename)).catch(() => {});
+  }
+
+  /* Das Vorschaubild entsteht beim ersten Abruf aus dem gespeicherten Foto und liegt danach unter demselben Namen in vorschau/.
+     So brauchen auch Fotos von früher keine Umstellung, und der Ordner lässt sich jederzeit leeren. */
+  async function vorschau(filename) {
+    const ziel = join(kleinDir, filename);
+    const fertig = await readFile(ziel).catch(() => null);
+    if (fertig) return fertig;
+    const foto = await readFile(join(dir, filename)).catch(() => null);
+    if (!foto) return null;
+    try {
+      // Kleine Fotos nicht vergrössern: Die Kante richtet sich nach der kürzeren Seite
+      const {width, height} = await sharp(foto).metadata();
+      const kante = Math.min(MAX_VORSCHAU, width, height);
+      const klein = await sharp(foto).resize(kante, kante, {fit: 'cover'}).jpeg({quality: 75}).toBuffer();
+      await writeFile(ziel, klein).catch(() => {});
+      return klein;
+    } catch {
+      return foto;
+    }
   }
 
   // Alle Fotos eines Events, wenn das Event gelöscht wird
@@ -64,12 +87,16 @@ export function registerPhotos(app, {db, dataDir, idPattern}) {
     const filename = eventId + '.' + pid + '.jpg';
     q.put.run(eventId, pid, filename, Date.now());
     await writeFile(join(dir, filename), jpeg);
+    // Ein ersetztes Foto bekommt beim nächsten Abruf ein neues Vorschaubild
+    await unlink(join(kleinDir, filename)).catch(() => {});
     return reply.code(204).send();
   });
 
-  app.get('/api/events/:id/photos/:pid', {schema: {params}}, async (req, reply) => {
+  // ?klein=1 liefert das Vorschaubild
+  const querystring = {type: 'object', properties: {klein: {type: 'string', maxLength: 8}}};
+  app.get('/api/events/:id/photos/:pid', {schema: {params, querystring}}, async (req, reply) => {
     const row = q.get.get(req.params.id, req.params.pid);
-    const data = row && await readFile(join(dir, row.filename)).catch(() => null);
+    const data = row && await (req.query.klein ? vorschau(row.filename) : readFile(join(dir, row.filename)).catch(() => null));
     if (!data) return reply.code(404).send({error: 'notfound'});
     // Kein immutable: Unter derselben Kennung kann ein Foto ersetzt werden
     return reply.header('content-type', 'image/jpeg').header('cache-control', 'private, max-age=31536000').send(data);

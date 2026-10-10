@@ -107,7 +107,7 @@ test('3b: Event-IDs mit Pfadanteilen oder Punkten werden abgelehnt', async () =>
     assert.ok([400, 404].includes(r.statusCode), `Foto-ID ${pid}: Status ${r.statusCode}`);
   }
   assert.deepEqual(dateien(), []);
-  assert.deepEqual(readdirSync(dir).filter(f => !f.startsWith('pizza_app.sqlite')), ['fotos'], 'nichts ausserhalb von fotos/');
+  assert.deepEqual(readdirSync(dir).filter(f => !f.startsWith('pizza_app.sqlite')), ['fotos', 'vorschau'], 'nichts ausserhalb von fotos/');
 });
 
 /* ---------- 4: Auslieferung nur mit Anmeldung, als image/jpeg, mit nosniff ---------- */

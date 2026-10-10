@@ -1,1 +1,6 @@
+# Überall LF, im Repo wie im Arbeitsordner, auch unter Windows
+* text=auto eol=lf
 *.sh text eol=lf
+*.png binary
+*.webp binary
+*.woff2 binary

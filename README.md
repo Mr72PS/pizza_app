@@ -98,6 +98,7 @@ Alles liegt im Ordner `data`:
 
 - `pizza_app.sqlite` (dazu im Betrieb `-wal` und `-shm`): Rezepte, Events, Benutzer
 - `fotos/`: die Fotos aus den Backprotokollen
+- `vorschau/`: verkleinerte Fassungen für die Galerie. Die App erzeugt sie bei Bedarf neu, sie müssen nicht gesichert werden.
 
 Sichere den ganzen Ordner, zum Beispiel mit Hyper Backup. Für eine garantiert saubere Kopie den Container vorher stoppen.
 

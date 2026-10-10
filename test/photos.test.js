@@ -22,6 +22,8 @@ const holen = (id, pid = 'f1', cookie = c.cookie) => app.inject({method: 'GET', 
 const hochladen = (id, body, pid = 'f1') => app.inject({method: 'PUT', url: `/api/events/${id}/photos/${pid}`, payload: body, headers: {origin: ORIGIN, cookie: c.cookie, 'content-type': 'image/jpeg'}});
 const masse = async (id, pid) => { const m = await sharp((await holen(id, pid)).rawPayload).metadata(); return [m.width, m.height]; };
 const liste = async () => (await c.call('GET', '/api/state')).body.photos;
+const klein = (id, pid = 'f1', cookie = c.cookie) => app.inject({method: 'GET', url: `/api/events/${id}/photos/${pid}?klein=1`, headers: cookie ? {cookie} : {}});
+const vorschauDir = () => join(dir, 'vorschau');
 const zeilen = () => app.db.prepare('SELECT COUNT(*) n FROM event_photos').get().n;
 
 beforeEach(async () => {
@@ -99,6 +101,46 @@ test('ein zweiter Benutzer sieht dasselbe Foto', async () => {
   assert.deepEqual((await holen('ev1', 'f1', gast.cookie)).rawPayload, (await holen('ev1')).rawPayload);
 });
 
+test('Vorschaubild: quadratisch, höchstens 480 px, viel kleiner als das Foto, nur mit Anmeldung', async () => {
+  await hochladen('ev1', GROSS);
+  assert.deepEqual(readdirSync(vorschauDir()), [], 'entsteht erst beim ersten Abruf');
+  const r = await klein('ev1');
+  assert.equal(r.statusCode, 200);
+  assert.equal(r.headers['content-type'], 'image/jpeg');
+  const m = await sharp(r.rawPayload).metadata();
+  assert.deepEqual([m.width, m.height], [480, 480]);
+  assert.ok(r.rawPayload.length < (await holen('ev1')).rawPayload.length / 2);
+  assert.deepEqual(readdirSync(vorschauDir()), ['ev1.f1.jpg']);
+  assert.deepEqual((await klein('ev1')).rawPayload, r.rawPayload, 'der zweite Abruf liefert die gespeicherte Datei');
+  assert.equal((await klein('ev1', 'f1', null)).statusCode, 401);
+  assert.equal((await klein('ev1', 'gibtsnicht')).statusCode, 404);
+});
+
+test('Vorschaubild: ein kleines Foto wird nicht vergrössert', async () => {
+  await hochladen('ev1', KLEIN);
+  const m = await sharp((await klein('ev1')).rawPayload).metadata();
+  assert.deepEqual([m.width, m.height], [240, 240]);
+});
+
+test('Vorschaubild: folgt dem Foto beim Ersetzen und Löschen', async () => {
+  await hochladen('ev1', GROSS);
+  const rot = (await klein('ev1')).rawPayload;
+  const BLAU = await sharp({create: {width: 800, height: 600, channels: 3, background: '#1C3FC9'}}).jpeg().toBuffer();
+  await hochladen('ev1', BLAU);
+  const blau = (await klein('ev1')).rawPayload;
+  assert.notDeepEqual(blau, rot, 'nach dem Ersetzen neu erzeugt');
+  const {dominant} = await sharp(blau).stats();
+  assert.ok(dominant.b > dominant.r, 'zeigt das neue Foto');
+
+  await c.call('DELETE', '/api/events/ev1/photos/f1');
+  assert.deepEqual(readdirSync(vorschauDir()), []);
+  assert.equal((await klein('ev1')).statusCode, 404);
+
+  await hochladen('ev1', GROSS); await klein('ev1');
+  await c.call('DELETE', '/api/events/ev1');
+  assert.deepEqual(readdirSync(vorschauDir()), [], 'mit dem Event gelöscht');
+});
+
 test('Umstellung: das eine Foto pro Event aus der alten Tabelle bleibt erhalten', async () => {
   // Datenordner im alten Format: Tabelle photos mit einer Zeile pro Event, Datei <Event>.jpg
   const alt = tempDir(); mkdirSync(join(alt, 'fotos'));
@@ -115,6 +157,7 @@ test('Umstellung: das eine Foto pro Event aus der alten Tabelle bleibt erhalten'
       const r = await a.inject({method: 'GET', url: '/api/events/evalt/photos/erstes', headers: {cookie: k.cookie}});
       assert.equal(r.statusCode, 200);
       assert.deepEqual(r.rawPayload, KLEIN, 'die Datei bleibt unverändert');
+      assert.equal((await a.inject({method: 'GET', url: '/api/events/evalt/photos/erstes?klein=1', headers: {cookie: k.cookie}})).statusCode, 200, 'auch das Vorschaubild');
       assert.equal(a.db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name = 'photos'").get().n, 0, 'die alte Tabelle ist weg');
     } finally { await a.close(); }
   }
