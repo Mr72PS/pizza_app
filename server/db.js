@@ -32,10 +32,12 @@ CREATE TABLE IF NOT EXISTS events (
   updated_at INTEGER NOT NULL,
   updated_by INTEGER
 );
-CREATE TABLE IF NOT EXISTS photos (
-  event_id TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS event_photos (
+  event_id TEXT NOT NULL,
+  photo_id TEXT NOT NULL,
   filename TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (event_id, photo_id)
 );
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
@@ -43,12 +45,23 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 `;
 
+/* Früher gab es genau ein Foto pro Event in der Tabelle photos. Die Zeilen ziehen einmalig um, die Dateien bleiben, wo sie sind.
+   Die alte Tabelle fällt im selben Schritt weg, sonst käme ein später gelöschtes Foto beim nächsten Start zurück. */
+function fotosUmstellen(db) {
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'photos'").get()) return;
+  db.transaction(() => {
+    db.exec("INSERT OR IGNORE INTO event_photos (event_id, photo_id, filename, created_at) SELECT event_id, 'erstes', filename, created_at FROM photos");
+    db.exec('DROP TABLE photos');
+  })();
+}
+
 export function openDb(dataDir) {
   mkdirSync(join(dataDir, 'fotos'), {recursive: true});
   const db = new Database(join(dataDir, 'pizza_app.sqlite'));
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
+  fotosUmstellen(db);
   return db;
 }
 

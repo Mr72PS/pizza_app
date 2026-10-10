@@ -18,7 +18,8 @@ async function api(method,url,body){
   return {status:res.status, data:res.status===204?null:await res.json().catch(()=>null)};
 }
 function adopt(s){
-  for(const id in fotos) delete fotos[id];
+  fotoIds={}; for(const f of s.photos||[]) (fotoIds[f.eventId]=fotoIds[f.eventId]||[]).push(f.id);
+  fotoSig=JSON.stringify(s.photos||[]);
   for(const k of KINDS){state[k]=s[k].map(x=>x.data); synced[k]=new Map(s[k].map(x=>[x.id,{json:JSON.stringify(x.data),ver:x.updatedAt}]));}
 }
 async function loadState(){
@@ -66,10 +67,10 @@ async function conflict(msg){
 }
 // Änderungen anderer Benutzer nachladen, ohne offene Formulare zu stören
 async function refresh(){
-  if(!me||!loaded||saving||dirty||document.hidden) return;
+  if(!me||!loaded||saving||dirty||fotoBusy||document.hidden) return;
   try{
-    const r=await api('GET','/api/state'); if(r.status!==200||saving||dirty) return;
-    if(KINDS.every(k=>r.data[k].length===synced[k].size&&r.data[k].every(x=>(synced[k].get(x.id)||{}).ver===x.updatedAt))) return;
+    const r=await api('GET','/api/state'); if(r.status!==200||saving||dirty||fotoBusy) return;
+    if(KINDS.every(k=>r.data[k].length===synced[k].size&&r.data[k].every(x=>(synced[k].get(x.id)||{}).ver===x.updatedAt))&&JSON.stringify(r.data.photos||[])===fotoSig) return;
     adopt(r.data);
     if(!['eventForm','recipeForm','log'].includes(ui.view)&&!document.querySelector('details[open]')) render();
   }catch(e){}
@@ -86,27 +87,30 @@ function methodeOptions(r,sel){
 }
 
 /* ---------- Fotos zum Backprotokoll ---------- */
-// Als Datei auf dem Server, ein Foto pro Event. `fotos` hält pro Event die Adresse fürs <img>.
-const fotos={};
-const FOTO_FEHLER={400:'Der Server kann die Datei nicht als JPEG lesen.',401:'Du bist nicht mehr angemeldet.',403:'Die Adresse im Browser passt nicht zur Einstellung BASE_URL.',404:'Das Event ist auf dem Server noch nicht gespeichert. Versuche es gleich nochmals.',413:'Das Bild ist grösser als 2 MB.'};
-const fotoUrl=id=>`/api/events/${id}/photo`;
-async function saveFoto(id,data){
-  // Bis der Upload durch ist, zeigt die Ansicht das verkleinerte Bild aus dem Formular
-  fotos[id]=data||null;
+// Als Dateien auf dem Server, mehrere pro Event. `fotoIds` hält pro Event die Kennungen in der Reihenfolge des Hochladens.
+let fotoIds={}, fotoSig='[]', fotoBusy=0;
+const MAX_FOTOS=10;
+// Frisch gewählte Fotos als data:-Adresse, damit die Ansicht nicht auf den Upload wartet
+const fotoLokal={};
+const FOTO_FEHLER={400:'Der Server kann die Datei nicht als JPEG lesen.',401:'Du bist nicht mehr angemeldet.',403:'Die Adresse im Browser passt nicht zur Einstellung BASE_URL.',404:'Das Event ist auf dem Server noch nicht gespeichert. Versuche es gleich nochmals.',409:'Dieses Event hat schon '+MAX_FOTOS+' Fotos.',413:'Das Bild ist grösser als 2 MB.'};
+const fotoUrl=(id,pid)=>`/api/events/${encodeURIComponent(id)}/photos/${encodeURIComponent(pid)}`;
+const fotoSrc=(id,pid)=>fotoLokal[pid]||fotoUrl(id,pid);
+const fotosOf=id=>fotoIds[id]||[];
+async function saveFoto(id,pid,data){
+  fotoLokal[pid]=data; fotoIds[id]=[...fotosOf(id),pid]; fotoBusy++;
   try{
-    if(!data){await fetch(fotoUrl(id),{method:'DELETE'}); return;}
     // Die data:-Adresse von Hand in Bytes wandeln: Die Content-Security-Policy erlaubt Verbindungen nur zur eigenen Adresse
     const bin=atob(data.slice(data.indexOf(',')+1)), bytes=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
     const blob=new Blob([bytes],{type:'image/jpeg'});
-    const res=await fetch(fotoUrl(id),{method:'PUT',headers:{'content-type':'image/jpeg'},body:blob});
+    const res=await fetch(fotoUrl(id,pid),{method:'PUT',headers:{'content-type':'image/jpeg'},body:blob});
     if(!res.ok) throw new Error(FOTO_FEHLER[res.status]||'Der Server meldet Fehler '+res.status+'.');
-  }catch(e){alert('Das Foto konnte nicht gespeichert werden. '+(e instanceof TypeError?'Der Server ist nicht erreichbar.':e.message));}
+  }catch(e){
+    fotoIds[id]=fotosOf(id).filter(x=>x!==pid); delete fotoLokal[pid];
+    alert('Ein Foto konnte nicht gespeichert werden. '+(e instanceof TypeError?'Der Server ist nicht erreichbar.':e.message));
+    if(['event','galerie','foto'].includes(ui.view)) render();
+  }finally{fotoBusy--;}
 }
-// Die Zeit des Protokolls hängt an der Adresse, damit ein ersetztes Foto nicht aus dem Cache kommt
-function loadFoto(id){
-  if(id in fotos) return;
-  const e=state.events.find(x=>x.id===id); fotos[id]=e&&e.log&&e.log.foto?fotoUrl(id)+'?v='+(Number(e.log.ts)||0):null;
-}
+function delFoto(id,pid){fotoIds[id]=fotosOf(id).filter(x=>x!==pid); fetch(fotoUrl(id,pid),{method:'DELETE'}).catch(()=>{});}
 function shrink(file){return new Promise((res,rej)=>{
   const fr=new FileReader(); fr.onerror=rej;
   fr.onload=()=>{const img=new Image(); img.onerror=rej; img.onload=()=>{
@@ -173,18 +177,50 @@ function viewEvents(){
 }
 
 // Alle Fotos aus den Backprotokollen, das neueste Event zuerst
-function viewGalerie(){
-  const evs=state.events.filter(e=>e.log&&e.log.foto).sort((a,b)=>(new Date(b.essen)-new Date(a.essen))||0);
-  evs.forEach(e=>loadFoto(e.id));
-  const datum=e=>{const d=new Date(e.essen); return isNaN(d)?'':`${TAGE[d.getDay()]}, ${d.getDate()}.${d.getMonth()+1}.${d.getFullYear()}`;};
-  const stern=e=>{const n=Math.min(5,Math.max(0,Math.round(Number(e.log.sterne))||0)); return n?`<span class="gs" role="img" aria-label="${n} von 5 Sternen">★ ${n}</span>`:'';};
-  return `<div class="top"><h1>Galerie</h1></div>
-  ${evs.length?`<ul class="galerie">${evs.filter(e=>fotos[e.id]).map(e=>`<li><button data-open-event="${esc(e.id)}"><img src="${esc(fotos[e.id])}" alt="Foto: ${esc(e.name||'Pizza-Abend')}" loading="lazy"><span class="gz small muted"><span>${datum(e)}</span>${stern(e)}</span></button></li>`).join('')}</ul>`:'<p class="empty">Noch keine Fotos. Füge im Backprotokoll eines Events ein Foto hinzu.</p>'}`;
+function galerieListe(){
+  return state.events.filter(e=>fotosOf(e.id).length).sort((a,b)=>(new Date(b.essen)-new Date(a.essen))||0).flatMap(e=>fotosOf(e.id).map(p=>({e,p})));
 }
+const fotoDatum=e=>{const d=new Date(e.essen); return isNaN(d)?'':`${TAGE[d.getDay()]}, ${d.getDate()}.${d.getMonth()+1}.${d.getFullYear()}`;};
+const fotoStern=e=>{const n=Math.min(5,Math.max(0,Math.round(Number((e.log||{}).sterne))||0)); return n?`<span class="gs" role="img" aria-label="${n} von 5 Sternen">★ ${n}</span>`:'';};
+function viewGalerie(){
+  const l=galerieListe();
+  return `<div class="top"><h1>Galerie</h1></div>
+  ${l.length?`<ul class="galerie">${l.map(({e,p})=>`<li><button data-lb-e="${esc(e.id)}" data-lb-p="${esc(p)}" data-lb-alle="1"><img src="${esc(fotoSrc(e.id,p))}" alt="Foto: ${esc(e.name||'Pizza-Abend')}" loading="lazy"><span class="gz small muted"><span>${fotoDatum(e)}</span>${fotoStern(e)}</span></button></li>`).join('')}</ul>`:'<p class="empty">Noch keine Fotos. Füge im Backprotokoll eines Events ein Foto hinzu.</p>'}`;
+}
+
+/* Grossansicht: blättert durch die ganze Galerie oder, aus einem Event geöffnet, nur durch dessen Fotos.
+   `ui.lb` hält Event und Foto, damit die Ansicht ein Nachladen der Daten übersteht. */
+function lbListe(){
+  if(ui.lb.alle) return galerieListe();
+  const e=state.events.find(x=>x.id===ui.lb.e); return e?fotosOf(e.id).map(p=>({e,p})):[];
+}
+const lbIndex=l=>l.findIndex(x=>x.e.id===ui.lb.e&&x.p===ui.lb.p);
+function viewFoto(){
+  const l=lbListe(), i=lbIndex(l);
+  if(i<0) return ui.lb.alle?viewGalerie():viewEvents();
+  const {e,p}=l[i];
+  const nav=(x,cls,txt,lbl)=>x?`<button class="${cls}" data-lb-e="${esc(x.e.id)}" data-lb-p="${esc(x.p)}" ${ui.lb.alle?'data-lb-alle="1"':''} aria-label="${lbl}">${txt}</button>`:'';
+  return `<div class="lb">
+    <div class="lbkopf"><button data-lb-zu>‹ ${ui.lb.alle?'Galerie':'Zeitplan'}</button><span>${i+1} / ${l.length}</span></div>
+    <div class="lbbild"><img src="${esc(fotoSrc(e.id,p))}" alt="Foto: ${esc(e.name||'Pizza-Abend')}">${nav(l[i-1],'lbvor','‹','Vorheriges Foto')}${nav(l[i+1],'lbnach','›','Nächstes Foto')}</div>
+    <div class="lbfuss"><span><strong>${esc(e.name||'Pizza-Abend')}</strong><br>${fotoDatum(e)} ${fotoStern(e)}</span>${ui.lb.alle?`<button class="lbev" data-zum-event="${esc(e.id)}">Zum Event</button>`:''}</div>
+  </div>`;
+}
+function lbSchritt(k){
+  const l=lbListe(), x=l[lbIndex(l)+k];
+  if(x) go('foto',null,{lb:{...ui.lb,e:x.e.id,p:x.p}});
+}
+function lbZu(){
+  const y=ui.lbY||0;
+  if(ui.lb.alle) go('galerie'); else go('event',ui.lb.e);
+  window.scrollTo(0,y);
+}
+
+function naechsterSamstag(){const d=new Date(); d.setDate(d.getDate()+((6-d.getDay()+7)%7||7)); d.setHours(19,0,0,0); return d;}
 
 function viewEventForm(){
   const e=ui.id?state.events.find(x=>x.id===ui.id):null;
-  let def=new Date(); def.setDate(def.getDate()+((6-def.getDay()+7)%7||7)); def.setHours(19,0,0,0);
+  const def=naechsterSamstag();
   const r0=(!e&&ui.preRecipe&&recipe(ui.preRecipe))||recipes()[0];
   const m0=(!e&&ui.preRecipe&&ui.calcM)||'';
   const v=ui.draft||e||{name:'',essen:toInput(def),recipeId:r0.id,methode:m0,anzahl:r0.stdAnzahl||3,raumtemp:21,maschine:!!r0.maschine,dauer:'',park:m0?0:(r0.parkStd||0)};
@@ -223,7 +259,6 @@ function viewEvent(){
   const r=recipe(e.recipeId);
   if(!r) return `<button class="back" data-nav="events">‹ Events</button><h1 style="font-size:2rem">${esc(e.name||'Pizza-Abend')}</h1><p class="note">Das Rezept zu diesem Event wurde gelöscht.</p><p style="margin-top:16px"><button class="btn" data-edit-event="${e.id}">Anderes Rezept wählen</button></p>`;
   const R=eff(r,e), p=plan(R,e), s0=p.steps[0], ni=nextIdx(e,p), done=e.done||{}, sug=vorschlaege(R,e), L=e.log;
-  if(L&&L.foto) loadFoto(e.id);
   let tl='', last='';
   p.steps.forEach((s,i)=>{
     if(dayKey(s.t)!==last){last=dayKey(s.t); tl+=`<li class="day">${TAGE[s.t.getDay()]} ${dm(s.t)}</li>`;}
@@ -231,7 +266,7 @@ function viewEvent(){
       <button class="dot" data-toggle="${s.k}" aria-label="${esc(s.ttl)} ${done[s.k]?'als offen markieren':'als erledigt markieren'}"></button>
       <details class="body"><summary><span class="ttl">${esc(s.ttl)}</span><span class="dur">${s.k==='backen'?'bis ca. '+hm(p.letzte):'dauert '+span(s.min)} · Details</span></summary><ul>${s.d.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details></li>`;
   });
-  return `<button class="back" data-nav="events">‹ Events</button>
+  return `${ui.von==='galerie'?'<button class="back" data-nav="galerie">‹ Galerie</button>':'<button class="back" data-nav="events">‹ Events</button>'}
   <h1 style="font-size:2rem">${esc(e.name||'Pizza-Abend')}</h1>
   <p class="muted">${esc(p.n)} × ${esc(r.name)}${R!==r?' ('+(KURZ[R.methode]||'').toLowerCase()+')':''}, essen am ${TAGE_LANG[p.E.getDay()]}, ${dm(p.E)} um ${hm(p.E)} Uhr</p>
   <div class="start"><div class="lbl">Starte am ${TAGE_LANG[s0.t.getDay()]}, ${dm(s0.t)} um</div><div class="big">${hm(s0.t)}</div><div class="what">${esc(s0.ttl)}</div></div>
@@ -239,18 +274,25 @@ function viewEvent(){
   ${sug.length?`<div class="sug"><h3>${p.nacht?'Vorschläge, damit alles tagsüber liegt':'Vorschläge, die zeitlich noch reichen'}</h3>${sug.map(c=>`<button class="sugb" data-apply="${c.D}|${c.P}"><strong>Start ${TAGE[c.t.getDay()]} ${dm(c.t)} um ${hm(c.t)}</strong><span>${esc(c.txt)}. Antippen zum Übernehmen.</span></button>`).join('')}</div>`:((p.nacht||p.past)?'<p class="small muted" style="margin-top:8px">Für dieses Rezept findet die App keine passende Variante. Wähle einen späteren Termin oder ein anderes Rezept.</p>':'')}
   <div class="row" style="margin-top:14px"><button class="btn primary grow" data-guide="${e.id}">${ni>0?'Anleitung fortsetzen':'Schritt für Schritt starten'}</button></div>
   <div class="row" style="margin-top:10px"><button class="btn grow" data-shop="${e.id}">Einkaufsliste</button><button class="btn grow" data-edit-event="${e.id}">Ändern</button></div>
+  <div class="row" style="margin-top:10px"><button class="btn grow" data-again="${e.id}">Nochmals so</button></div>
   <h2>Zeitplan</h2><p class="small muted">${esc(p.info)}. Tippe auf einen Schritt für die Details, auf den Punkt zum Abhaken.</p>
   <ol class="tl">${tl}</ol>
   <h2>Zutaten</h2>${amountsTable(p,R)}
   <h2>Ofen</h2><p>Oben ${esc(r.oben)} °C, unten ${esc(r.unten)} °C, ${esc(r.backMin)}–${esc(r.backMax)} min pro Pizza. Das sind Startwerte: nach der ersten Pizza nachstellen.</p>
   <h2>Backprotokoll</h2>
   ${L?`<div class="card">${sterne(L.sterne)}
-    ${L.foto&&fotos[e.id]?`<img class="foto" src="${esc(fotos[e.id])}" alt="Foto vom Pizza-Abend">`:''}
+    ${eventFotos(e)}
     ${[L.raum?`Küche ${esc(L.raum)} °C`:'',L.oben?`oben ${esc(L.oben)} °C`:'',L.unten?`unten ${esc(L.unten)} °C`:'',L.backzeit?`Backzeit ${esc(L.backzeit)}`:''].filter(Boolean).length?`<p style="margin-top:8px">${[L.raum?`Küche ${esc(L.raum)} °C`:'',L.oben?`oben ${esc(L.oben)} °C`:'',L.unten?`unten ${esc(L.unten)} °C`:'',L.backzeit?`Backzeit ${esc(L.backzeit)}`:''].filter(Boolean).join(', ')}</p>`:''}
     ${L.gut?`<p><strong>Gut war:</strong> ${esc(L.gut)}</p>`:''}${L.aendern?`<p><strong>Nächstes Mal:</strong> ${esc(L.aendern)}</p>`:''}
     <div class="row" style="margin-top:10px"><button class="btn quiet" data-log="${e.id}">Bearbeiten</button>${L.oben||L.unten?`<button class="btn quiet" data-log-apply="${e.id}">Ofenwerte ins Rezept übernehmen</button>`:''}</div></div>`
   :`<p class="muted">Freiwillig: Halte nach dem Backen fest, wie es war. So werden aus Startwerten deine erprobten Werte.</p><p><button class="btn" data-log="${e.id}">Protokoll erfassen</button></p>`}
   <p style="margin-top:28px"><button class="btn danger" data-del-event="${e.id}">Event löschen</button></p>`;
+}
+
+// Ein einzelnes Foto in voller Breite, mehrere als Raster; Antippen öffnet die Grossansicht
+function eventFotos(e){
+  const ids=fotosOf(e.id); if(!ids.length) return '';
+  return `<ul class="galerie${ids.length===1?' eins':''}" style="margin:10px 0">${ids.map(p=>`<li><button data-lb-e="${esc(e.id)}" data-lb-p="${esc(p)}"><img src="${esc(fotoSrc(e.id,p))}" alt="Foto vom Pizza-Abend" loading="lazy"></button></li>`).join('')}</ul>`;
 }
 
 function viewShop(){
@@ -270,10 +312,18 @@ function viewShop(){
   <form id="shopAdd" style="margin-top:12px"><div class="row"><input name="txt" class="grow" style="flex:1;width:auto" placeholder="Wein, Servietten, …" autocomplete="off" required><button class="btn" type="submit">Dazu</button></div></form>`;
 }
 
+// Fotos im Formular: die gespeicherten ohne die zum Entfernen vorgemerkten, dazu die frisch gewählten
+function fotoWahl(e){
+  return [...fotosOf(e.id).filter(p=>!(ui.fotoWeg||[]).includes(p)).map(p=>({id:p,src:fotoSrc(e.id,p)})),...(ui.fotoNeu||[]).map(n=>({id:n.id,src:n.data}))];
+}
+function fotoBox(e){
+  const l=fotoWahl(e);
+  return l.length?`<ul class="galerie">${l.map(f=>`<li><img src="${esc(f.src)}" alt="Foto vom Pizza-Abend"><button type="button" class="btn quiet" data-foto-del="${esc(f.id)}">Entfernen</button></li>`).join('')}</ul>`:'';
+}
+
 function viewLog(){
   const e=state.events.find(x=>x.id===ui.id), r=e&&recipe(e.recipeId); if(!e) return viewEvents();
-  const L=e.log||{}, st=Math.min(5,Math.max(0,Math.round(Number(L.sterne))||0)); if(L.foto) loadFoto(e.id);
-  const foto=ui.fotoDraft!==undefined?ui.fotoDraft:(L.foto?fotos[e.id]:null);
+  const L=e.log||{}, st=Math.min(5,Math.max(0,Math.round(Number(L.sterne))||0));
   return `<button class="back" data-open-event="${e.id}">‹ Zeitplan</button>
   <h1 style="font-size:2rem;margin-bottom:6px">Backprotokoll</h1>
   <p class="muted" style="margin-bottom:18px">${esc(e.name||'Pizza-Abend')}. Alle Felder sind freiwillig.</p>
@@ -284,8 +334,8 @@ function viewLog(){
     <div class="two"><label>Oberhitze (°C)<input name="oben" value="${esc(L.oben??(r?r.oben:''))}"></label><label>Unterhitze (°C)<input name="unten" value="${esc(L.unten??(r?r.unten:''))}"></label></div>
     <label>Was war gut?<textarea name="gut">${esc(L.gut||'')}</textarea></label>
     <label>Was änderst du nächstes Mal?<textarea name="aendern">${esc(L.aendern||'')}</textarea></label>
-    <label>Foto<input type="file" id="fotoIn" accept="image/*"></label>
-    <div id="fotoBox">${foto?`<img class="foto" src="${esc(foto)}" alt="Foto vom Pizza-Abend"><button type="button" class="btn quiet" data-foto-del>Foto entfernen</button>`:''}</div>
+    <label>Fotos<input type="file" id="fotoIn" accept="image/*" multiple><span class="hint">Höchstens ${MAX_FOTOS} pro Event.</span></label>
+    <div id="fotoBox">${fotoBox(e)}</div>
     <button class="btn primary" type="submit">Protokoll speichern</button>
   </form>
   ${e.log?`<p style="margin-top:20px"><button class="btn danger" data-log-del="${e.id}">Protokoll löschen</button></p>`:''}`;
@@ -437,10 +487,10 @@ async function start(){
 function render(){
   document.querySelector('nav').hidden=!me;
   if(!me&&!loadErr){app.innerHTML=viewLogin(); return;}
-  const V={events:viewEvents,eventForm:viewEventForm,event:viewEvent,guide:viewGuide,shop:viewShop,log:viewLog,recipes:viewRecipes,recipe:viewRecipe,recipeForm:viewRecipeForm,galerie:viewGalerie,konto:viewKonto};
+  const V={events:viewEvents,eventForm:viewEventForm,event:viewEvent,guide:viewGuide,shop:viewShop,log:viewLog,recipes:viewRecipes,recipe:viewRecipe,recipeForm:viewRecipeForm,galerie:viewGalerie,foto:viewFoto,konto:viewKonto};
   if(!loaded){app.innerHTML=loadErr?'<h1>Pizza App</h1><p class="note">Die Daten konnten nicht geladen werden.</p><p style="margin-top:16px"><button class="btn" data-reload>Nochmals versuchen</button></p>':'<p class="muted">Lädt …</p>'; return;}
   app.innerHTML=(saveErr?'<p class="note" style="margin:0 0 14px">Die letzte Änderung ist noch nicht gespeichert. Die App versucht es weiter.</p>':'')+(V[ui.view]||viewEvents)();
-  const tab=ui.view==='konto'||ui.view==='galerie'?ui.view:['recipes','recipe','recipeForm'].includes(ui.view)?'recipes':'events';
+  const tab=ui.view==='konto'?'konto':['recipes','recipe','recipeForm'].includes(ui.view)?'recipes':ui.view==='galerie'||(ui.view==='foto'&&ui.lb.alle)||ui.von==='galerie'?'galerie':'events';
   document.querySelectorAll('nav button').forEach(b=>b.dataset.nav===tab?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current'));
 }
 
@@ -453,7 +503,13 @@ document.addEventListener('click',ev=>{
   if(!loaded) return;
   if(d.openEvent) return go('event',d.openEvent);
   if(d.nav==='konto'){ui.msg=''; ui.users=null; loadUsers(); return go('konto');}
-  if(d.nav) return go(d.nav);
+  if(d.nav) return go(d.nav,null,{von:null});
+  if(d.lbP){if(ui.view!=='foto') ui.lbY=window.scrollY; return go('foto',null,{lb:{e:d.lbE,p:d.lbP,alle:!!d.lbAlle}});}
+  if('lbZu' in d) return lbZu();
+  if(d.zumEvent) return go('event',d.zumEvent,{von:'galerie'});
+  if(d.again){const e=state.events.find(x=>x.id===d.again); if(!e) return;
+    ui.preRecipe=null; ui.draft={name:e.name||'',essen:toInput(naechsterSamstag()),recipeId:e.recipeId,methode:e.methode||'',anzahl:e.anzahl,raumtemp:e.raumtemp,maschine:!!e.maschine,dauer:e.dauer,park:e.park,erw:e.erw??'',kind:e.kind??''};
+    return go('eventForm',null);}
   if('logout' in d){api('POST','/api/logout').finally(()=>location.reload()); return;}
   if(d.userPw){const u=ui.users.find(x=>x.id===Number(d.userPw)), pw=prompt(`Neues Passwort für «${u.username}» (mindestens 8 Zeichen). Die Person wird überall abgemeldet.`); if(pw) changeUser('PATCH',u.id,{password:pw},`Das Passwort von «${u.username}» ist neu gesetzt.`); return;}
   if(d.userPatch){const [id,was]=d.userPatch.split('|'), u=ui.users.find(x=>x.id===Number(id));
@@ -463,15 +519,17 @@ document.addEventListener('click',ev=>{
   if(d.userDel){const u=ui.users.find(x=>x.id===Number(d.userDel)); if(confirm(`Benutzer «${u.username}» löschen?`)) changeUser('DELETE',u.id,undefined,`«${u.username}» ist gelöscht.`); return;}
   if('newEvent' in d){ui.preRecipe=d.newEvent||null; ui.draft=null; return go('eventForm',null);}
   if(d.editEvent){ui.draft=null; return go('eventForm',d.editEvent);}
-  if(d.delEvent){ if(confirm('Diesen Event löschen? Zeitplan, Einkaufsliste und Protokoll gehen dabei verloren.')){state.events=state.events.filter(e=>e.id!==d.delEvent); saveFoto(d.delEvent,null); save(); go('events');} return; }
+  if(d.delEvent){ if(confirm('Diesen Event löschen? Zeitplan, Einkaufsliste und Protokoll gehen dabei verloren.')){state.events=state.events.filter(e=>e.id!==d.delEvent); delete fotoIds[d.delEvent]; save(); go('events');} return; }
   if(d.apply){const e=state.events.find(x=>x.id===ui.id), [D,P]=d.apply.split('|').map(Number); e.dauer=D; e.park=P; save(); return go('event',e.id);}
   if(d.shop) return go('shop',d.shop);
   if(d.belag){const e=state.events.find(x=>x.id===ui.id), [id,k]=d.belag.split('|'); e.shop=e.shop||{}; e.shop.belag={...belagOf(e)}; e.shop.belag[id]=Math.max(0,(e.shop.belag[id]||0)+Number(k)); save(); return render();}
   if(d.shopDel){const e=state.events.find(x=>x.id===ui.id); e.shop.extra=(e.shop.extra||[]).filter(x=>x.id!==d.shopDel); save(); return render();}
-  if(d.log){ui.fotoDraft=undefined; return go('log',d.log);}
+  if(d.log){ui.fotoNeu=[]; ui.fotoWeg=[]; return go('log',d.log);}
   if(d.star){const f=t.closest('form'), n=Number(d.star), v=Number(f.sterne.value)===n?0:n; f.sterne.value=v; f.querySelectorAll('[data-star]').forEach(b=>b.classList.toggle('on',Number(b.dataset.star)<=v)); return;}
-  if('fotoDel' in d){ui.fotoDraft=null; document.getElementById('fotoBox').innerHTML=''; return;}
-  if(d.logDel){ if(confirm('Dieses Protokoll löschen?')){const e=state.events.find(x=>x.id===d.logDel); delete e.log; saveFoto(e.id,null); save(); go('event',e.id);} return; }
+  if(d.fotoDel){const e=state.events.find(x=>x.id===ui.id);
+    if(ui.fotoNeu.some(n=>n.id===d.fotoDel)) ui.fotoNeu=ui.fotoNeu.filter(n=>n.id!==d.fotoDel); else ui.fotoWeg.push(d.fotoDel);
+    document.getElementById('fotoBox').innerHTML=fotoBox(e); return;}
+  if(d.logDel){ if(confirm('Dieses Protokoll löschen?')){const e=state.events.find(x=>x.id===d.logDel); delete e.log; fotosOf(e.id).forEach(p=>delFoto(e.id,p)); save(); go('event',e.id);} return; }
   if(d.logApply){const e=state.events.find(x=>x.id===d.logApply), L=e.log, r0=recipe(e.recipeId);
     if(r0&&confirm(`Ofenwerte im Rezept «${r0.name}» ersetzen?`)){const r=ownRecipes().find(x=>x.id===e.recipeId); if(L.oben) r.oben=L.oben; if(L.unten) r.unten=L.unten; save(); render();} return; }
   if(d.toggle){const e=state.events.find(x=>x.id===ui.id); e.done=e.done||{}; e.done[d.toggle]=!e.done[d.toggle]; save(); return render();}
@@ -492,9 +550,14 @@ document.addEventListener('input',ev=>{
 document.addEventListener('change',async ev=>{
   if(ev.target.id==='calcM'){ui.calcM=ev.target.value; return render();}
   if(ev.target.dataset.shopkey){const e=state.events.find(x=>x.id===ui.id); e.shop=e.shop||{}; e.shop.ok=e.shop.ok||{}; e.shop.ok[ev.target.dataset.shopkey]=ev.target.checked; ev.target.closest('.chk').classList.toggle('on',ev.target.checked); return save();}
-  if(ev.target.id==='fotoIn'){const file=ev.target.files&&ev.target.files[0]; if(!file) return;
-    try{ui.fotoDraft=await shrink(file); document.getElementById('fotoBox').innerHTML=`<img class="foto" src="${ui.fotoDraft}" alt="Foto vom Pizza-Abend"><button type="button" class="btn quiet" data-foto-del>Foto entfernen</button>`;}
-    catch(e){alert('Das Foto konnte nicht gelesen werden.');} return;}
+  if(ev.target.id==='fotoIn'){const e=state.events.find(x=>x.id===ui.id), files=[...(ev.target.files||[])]; if(!e||!files.length) return;
+    const frei=Math.max(0,MAX_FOTOS-fotoWahl(e).length);
+    if(files.length>frei) alert(frei?`Höchstens ${MAX_FOTOS} Fotos pro Event, es hat noch Platz für ${frei}.`:`Dieses Event hat schon ${MAX_FOTOS} Fotos.`);
+    for(const file of files.slice(0,frei)){
+      try{ui.fotoNeu.push({id:uid(),data:await shrink(file)});}catch(err){alert('Ein Foto konnte nicht gelesen werden.');}
+    }
+    // Leeren, damit dieselbe Datei nach dem Entfernen nochmals gewählt werden kann
+    ev.target.value=''; const box=document.getElementById('fotoBox'); if(box) box.innerHTML=fotoBox(e); return;}
   const f=ev.target.form; if(!f) return;
   if(f.id==='eventForm'&&(ev.target.name==='recipeId'||ev.target.name==='methode')){
     const v=Object.fromEntries(new FormData(f)), r=recipe(v.recipeId);
@@ -523,10 +586,10 @@ document.addEventListener('submit',ev=>{
     ui.draft=null; save(); go('event',e.id);
   }
   if(f.id==='shopAdd'){const e=state.events.find(x=>x.id===ui.id), t=(v.txt||'').trim(); if(!t) return; e.shop=e.shop||{}; e.shop.extra=(e.shop.extra||[]).concat({id:uid(),txt:t}); save(); render(); const i=document.querySelector('#shopAdd input'); if(i&&i.focus) i.focus(); return;}
-  if(f.id==='logForm'){const e=state.events.find(x=>x.id===ui.id), old=e.log||{};
-    let foto=!!old.foto; if(ui.fotoDraft!==undefined){foto=!!ui.fotoDraft; saveFoto(e.id,ui.fotoDraft);}
-    e.log={sterne:Number(v.sterne)||0,raum:(v.raum||'').trim(),oben:(v.oben||'').trim(),unten:(v.unten||'').trim(),backzeit:(v.backzeit||'').trim(),gut:(v.gut||'').trim(),aendern:(v.aendern||'').trim(),foto,ts:Date.now()};
-    ui.fotoDraft=undefined; save(); return go('event',e.id);}
+  if(f.id==='logForm'){const e=state.events.find(x=>x.id===ui.id);
+    (ui.fotoWeg||[]).forEach(p=>delFoto(e.id,p)); (ui.fotoNeu||[]).forEach(n=>saveFoto(e.id,n.id,n.data));
+    e.log={sterne:Number(v.sterne)||0,raum:(v.raum||'').trim(),oben:(v.oben||'').trim(),unten:(v.unten||'').trim(),backzeit:(v.backzeit||'').trim(),gut:(v.gut||'').trim(),aendern:(v.aendern||'').trim(),ts:Date.now()};
+    ui.fotoNeu=[]; ui.fotoWeg=[]; save(); return go('event',e.id);}
   if(f.id==='recipeForm'){
     const n=k=>Number(String(v[k]).replace(',','.'))||0;
     const data={name:v.name.trim(),quelle:QUELLEN[v.quelle]?v.quelle:'mein',quelleUrl:(v.quelleUrl||'').trim(),methode:v.methode,dauer:n('dauer')||10,ballen:n('ballen')||280,hyd:n('hyd'),salz:n('salz'),oel:n('oel'),zucker:n('zucker'),anteil:n('anteil')||40,bigaKalt:!!v.bigaKalt,oben:v.oben.trim(),unten:v.unten.trim(),backMin:n('backMin')||2,backMax:Math.max(n('backMax'),n('backMin'))||3,mehl:(v.mehl||'').trim(),formen:v.formen.trim(),notiz:v.notiz.trim()};
@@ -538,6 +601,16 @@ document.addEventListener('submit',ev=>{
 
 start();
 if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+let wischX=null;
+document.addEventListener('touchstart',ev=>{wischX=ui.view==='foto'&&ev.touches.length===1?ev.touches[0].clientX:null;},{passive:true});
+document.addEventListener('touchend',ev=>{
+  if(wischX===null) return; const dx=ev.changedTouches[0].clientX-wischX; wischX=null;
+  if(ui.view==='foto'&&Math.abs(dx)>50) lbSchritt(dx<0?1:-1);
+});
+document.addEventListener('keydown',ev=>{
+  if(ui.view!=='foto') return;
+  if(ev.key==='ArrowRight') lbSchritt(1); else if(ev.key==='ArrowLeft') lbSchritt(-1); else if(ev.key==='Escape') lbZu();
+});
 document.addEventListener('visibilitychange',refresh);
 setInterval(refresh,60000);
 setInterval(()=>{if(ui.view==='guide'&&!document.querySelector('details[open]')) render();},60000);

@@ -21,8 +21,8 @@ before(async () => {
 let dir, app, c;
 const fotoDir = () => join(dir, 'fotos');
 const dateien = () => readdirSync(fotoDir());
-const put = (id, body, headers = {}, query = '') => app.inject({method: 'PUT', url: `/api/events/${id}/photo${query}`, payload: body, headers: {origin: ORIGIN, cookie: c.cookie, 'content-type': 'image/jpeg', ...headers}});
-const get = (id, cookie = c.cookie) => app.inject({method: 'GET', url: `/api/events/${id}/photo`, headers: cookie ? {cookie} : {}});
+const put = (id, body, headers = {}, query = '') => app.inject({method: 'PUT', url: `/api/events/${id}/photos/f1${query}`, payload: body, headers: {origin: ORIGIN, cookie: c.cookie, 'content-type': 'image/jpeg', ...headers}});
+const get = (id, cookie = c.cookie) => app.inject({method: 'GET', url: `/api/events/${id}/photos/f1`, headers: cookie ? {cookie} : {}});
 
 beforeEach(async () => {
   dir = tempDir(); app = await startApp(dir); c = client(app); await c.login();
@@ -93,14 +93,18 @@ test('3a: Name und Endung lassen sich vom Client nicht beeinflussen', async () =
   assert.equal(r.statusCode, 204);
   const liste = dateien();
   assert.equal(liste.length, 1);
-  assert.match(liste[0], /^[A-Za-z0-9_-]{1,64}\.jpg$/);
-  assert.equal(app.db.prepare('SELECT filename FROM photos').get().filename, liste[0]);
+  assert.match(liste[0], /^[A-Za-z0-9_-]{1,64}\.[A-Za-z0-9_-]{1,64}\.jpg$/);
+  assert.equal(app.db.prepare('SELECT filename FROM event_photos').get().filename, liste[0]);
 });
 
 test('3b: Event-IDs mit Pfadanteilen oder Punkten werden abgelehnt', async () => {
   for (const id of ['..%2F..%2Fx', '..', 'a.php', 'a%00b', 'a%5Cb', '%2Fetc%2Fpasswd', 'x'.repeat(65)]) {
     const r = await put(id, ECHT);
     assert.ok([400, 404].includes(r.statusCode), `${id}: Status ${r.statusCode}`);
+  }
+  for (const pid of ['..%2F..%2Fx', '..', 'a.php', 'a%00b', 'a%5Cb', 'x'.repeat(65)]) {
+    const r = await app.inject({method: 'PUT', url: `/api/events/ev1/photos/${pid}`, payload: ECHT, headers: {origin: ORIGIN, cookie: c.cookie, 'content-type': 'image/jpeg'}});
+    assert.ok([400, 404].includes(r.statusCode), `Foto-ID ${pid}: Status ${r.statusCode}`);
   }
   assert.deepEqual(dateien(), []);
   assert.deepEqual(readdirSync(dir).filter(f => !f.startsWith('pizza_app.sqlite')), ['fotos'], 'nichts ausserhalb von fotos/');
@@ -112,8 +116,8 @@ test('4a: ohne Anmeldung gibt es kein Foto', async () => {
   await put('ev1', ECHT);
   assert.equal((await get('ev1', null)).statusCode, 401);
   assert.equal((await get('ev1', 'pizza_sid=erfunden')).statusCode, 401);
-  assert.equal((await app.inject({method: 'GET', url: '/fotos/ev1.jpg'})).statusCode, 404, 'kein Weg an der API vorbei');
-  assert.equal((await app.inject({method: 'GET', url: '/api/events/ev1/photo/../../../fotos/ev1.jpg', headers: {cookie: c.cookie}})).statusCode, 404);
+  assert.equal((await app.inject({method: 'GET', url: '/fotos/ev1.f1.jpg'})).statusCode, 404, 'kein Weg an der API vorbei');
+  assert.equal((await app.inject({method: 'GET', url: '/api/events/ev1/photos/../../../fotos/ev1.f1.jpg', headers: {cookie: c.cookie}})).statusCode, 404);
 });
 
 test('4b: ausgeliefert wird als image/jpeg mit nosniff', async () => {

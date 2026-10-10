@@ -89,7 +89,7 @@ export async function buildApp({dataDir, logger = false, config = {}} = {}) {
 
   app.get('/healthz', () => ({ok: true}));
 
-  app.get('/api/state', () => ({recipes: recipes.list(), events: events.list()}));
+  app.get('/api/state', () => ({recipes: recipes.list(), events: events.list(), photos: photos.list()}));
 
   const body = data => ({
     type: 'object', required: ['data'], additionalProperties: false,

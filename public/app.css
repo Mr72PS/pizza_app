@@ -120,10 +120,25 @@ a{color:inherit}
 .starpick button.on{color:var(--tomato)}
 .foto{display:block;max-width:100%;border-radius:14px;margin:10px 0}
 .galerie{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(2,1fr);gap:14px 12px}
-.galerie button{display:block;width:100%;padding:0;border:0;background:none;color:inherit;text-align:left}
+.galerie button:not(.btn){display:block;width:100%;padding:0;border:0;background:none;color:inherit;text-align:left}
+.galerie .btn{width:100%;min-height:40px;margin-top:6px}
+.galerie.eins{grid-template-columns:1fr}
+.galerie.eins img{aspect-ratio:auto}
 .galerie img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:14px;background:var(--surface)}
 .galerie .gz{display:flex;justify-content:space-between;gap:8px;margin-top:6px}
 .galerie .gs{color:var(--tomato);font-weight:700;white-space:nowrap}
+/* Grossansicht eines Fotos, über der Navigation */
+.lb{position:fixed;inset:0;z-index:10;background:var(--ink);color:var(--bg);display:flex;flex-direction:column;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+.lb button{background:none;border:0;color:inherit;font-weight:600;min-height:48px}
+.lbkopf,.lbfuss{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 18px}
+.lbfuss{padding-top:12px;padding-bottom:14px;line-height:1.35}
+.lbfuss .gs{margin-left:6px}
+.lbbild{flex:1;min-height:0;position:relative}
+.lbbild img{width:100%;height:100%;object-fit:contain;display:block}
+.lbbild button{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:64px;font-size:2rem;line-height:1;background:rgba(0,0,0,.35);border-radius:10px}
+.lbvor{left:6px}
+.lbnach{right:6px}
+.lb .lbev{border:2px solid currentColor;border-radius:999px;padding:0 18px;white-space:nowrap}
 .card{background:var(--surface);border-radius:16px;padding:16px;margin-top:6px}
 /* Formular */
 form{display:grid;gap:16px}

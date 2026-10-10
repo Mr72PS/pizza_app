@@ -1,9 +1,10 @@
 /* Fotos als Dateien im Volume, ausgeliefert hinter der Anmeldung. Die Sicherheitsprüfungen stehen in upload-security.test.js. */
 import {test, before, beforeEach, afterEach} from 'node:test';
 import assert from 'node:assert/strict';
-import {readdirSync} from 'node:fs';
+import {readdirSync, mkdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import sharp from 'sharp';
+import Database from 'better-sqlite3';
 import {startApp, client, tempDir, removeDir, ORIGIN, EVENT} from './helper.js';
 
 let KLEIN, GROSS, HOCHKANT;
@@ -17,9 +18,11 @@ before(async () => {
 
 let dir, app, c;
 const fotoDir = () => join(dir, 'fotos');
-const holen = (id, cookie = c.cookie) => app.inject({method: 'GET', url: `/api/events/${id}/photo`, headers: {cookie}});
-const hochladen = (id, body) => app.inject({method: 'PUT', url: `/api/events/${id}/photo`, payload: body, headers: {origin: ORIGIN, cookie: c.cookie, 'content-type': 'image/jpeg'}});
-const masse = async id => { const m = await sharp((await holen(id)).rawPayload).metadata(); return [m.width, m.height]; };
+const holen = (id, pid = 'f1', cookie = c.cookie) => app.inject({method: 'GET', url: `/api/events/${id}/photos/${pid}`, headers: {cookie}});
+const hochladen = (id, body, pid = 'f1') => app.inject({method: 'PUT', url: `/api/events/${id}/photos/${pid}`, payload: body, headers: {origin: ORIGIN, cookie: c.cookie, 'content-type': 'image/jpeg'}});
+const masse = async (id, pid) => { const m = await sharp((await holen(id, pid)).rawPayload).metadata(); return [m.width, m.height]; };
+const liste = async () => (await c.call('GET', '/api/state')).body.photos;
+const zeilen = () => app.db.prepare('SELECT COUNT(*) n FROM event_photos').get().n;
 
 beforeEach(async () => {
   dir = tempDir(); app = await startApp(dir); c = client(app); await c.login();
@@ -27,20 +30,41 @@ beforeEach(async () => {
 });
 afterEach(async () => { await app.close(); removeDir(dir); });
 
-test('Foto hochladen, abrufen, ersetzen, löschen', async () => {
+test('Fotos hochladen, abrufen, ersetzen, einzeln löschen', async () => {
   assert.equal((await holen('ev1')).statusCode, 404);
+  assert.deepEqual(await liste(), []);
   assert.equal((await hochladen('ev1', KLEIN)).statusCode, 204);
-  assert.deepEqual(readdirSync(fotoDir()), ['ev1.jpg']);
-  assert.deepEqual(await masse('ev1'), [320, 240]);
+  assert.equal((await hochladen('ev1', HOCHKANT, 'f2')).statusCode, 204);
+  assert.deepEqual(readdirSync(fotoDir()).sort(), ['ev1.f1.jpg', 'ev1.f2.jpg']);
+  assert.deepEqual(await masse('ev1', 'f1'), [320, 240]);
+  assert.deepEqual(await liste(), [{eventId: 'ev1', id: 'f1'}, {eventId: 'ev1', id: 'f2'}], 'in der Reihenfolge des Hochladens');
 
-  assert.equal((await hochladen('ev1', HOCHKANT)).statusCode, 204);
-  assert.deepEqual(readdirSync(fotoDir()), ['ev1.jpg']);
-  assert.equal(app.db.prepare('SELECT COUNT(*) n FROM photos').get().n, 1);
+  assert.equal((await hochladen('ev1', HOCHKANT)).statusCode, 204, 'dieselbe Kennung ersetzt das Foto');
+  assert.deepEqual(await masse('ev1', 'f1'), [300, 400]);
+  assert.equal(zeilen(), 2);
 
-  assert.equal((await c.call('DELETE', '/api/events/ev1/photo')).status, 204);
+  assert.equal((await c.call('DELETE', '/api/events/ev1/photos/f1')).status, 204);
   assert.equal((await holen('ev1')).statusCode, 404);
-  assert.deepEqual(readdirSync(fotoDir()), []);
-  assert.equal((await c.call('DELETE', '/api/events/ev1/photo')).status, 204, 'nochmals löschen ist kein Fehler');
+  assert.equal((await holen('ev1', 'f2')).statusCode, 200, 'das andere Foto bleibt');
+  assert.deepEqual(readdirSync(fotoDir()), ['ev1.f2.jpg']);
+  assert.equal((await c.call('DELETE', '/api/events/ev1/photos/f1')).status, 204, 'nochmals löschen ist kein Fehler');
+});
+
+test('höchstens 10 Fotos pro Event', async () => {
+  for (let i = 0; i < 10; i++) assert.equal((await hochladen('ev1', KLEIN, 'f' + i)).statusCode, 204);
+  const r = await hochladen('ev1', KLEIN, 'zuviel');
+  assert.equal(r.statusCode, 409);
+  assert.equal(readdirSync(fotoDir()).length, 10);
+  assert.equal((await hochladen('ev1', KLEIN, 'f3')).statusCode, 204, 'ersetzen geht auch an der Grenze');
+  await c.call('PUT', '/api/events/ev2', {data: EVENT});
+  assert.equal((await hochladen('ev2', KLEIN)).statusCode, 204, 'die Grenze gilt pro Event');
+});
+
+test('gleiche Foto-Kennung in zwei Events sind zwei Fotos', async () => {
+  await c.call('PUT', '/api/events/ev2', {data: EVENT});
+  await hochladen('ev1', KLEIN); await hochladen('ev2', GROSS);
+  assert.deepEqual(await masse('ev1', 'f1'), [320, 240]);
+  assert.deepEqual(await masse('ev2', 'f1'), [1600, 1200]);
 });
 
 test('grosse Fotos werden auf höchstens 1600 px verkleinert, kleine nicht vergrössert', async () => {
@@ -56,11 +80,11 @@ test('die Drehung vom Handy bleibt erhalten, obwohl die Metadaten entfernt werde
   assert.equal((await sharp((await holen('ev1')).rawPayload).metadata()).orientation, undefined);
 });
 
-test('Event löschen löscht auch das Foto', async () => {
-  await hochladen('ev1', KLEIN);
+test('Event löschen löscht auch alle seine Fotos', async () => {
+  await hochladen('ev1', KLEIN); await hochladen('ev1', KLEIN, 'f2');
   assert.equal((await c.call('DELETE', '/api/events/ev1')).status, 204);
   assert.deepEqual(readdirSync(fotoDir()), []);
-  assert.equal(app.db.prepare('SELECT COUNT(*) n FROM photos').get().n, 0);
+  assert.equal(zeilen(), 0);
 });
 
 test('ein Foto gibt es nur zu einem vorhandenen Event', async () => {
@@ -72,5 +96,27 @@ test('ein zweiter Benutzer sieht dasselbe Foto', async () => {
   await hochladen('ev1', KLEIN);
   await c.call('POST', '/api/users', {username: 'gast', password: 'auch-geheim-1'});
   const gast = client(app); await gast.login({username: 'gast', password: 'auch-geheim-1'});
-  assert.deepEqual((await holen('ev1', gast.cookie)).rawPayload, (await holen('ev1')).rawPayload);
+  assert.deepEqual((await holen('ev1', 'f1', gast.cookie)).rawPayload, (await holen('ev1')).rawPayload);
+});
+
+test('Umstellung: das eine Foto pro Event aus der alten Tabelle bleibt erhalten', async () => {
+  // Datenordner im alten Format: Tabelle photos mit einer Zeile pro Event, Datei <Event>.jpg
+  const alt = tempDir(); mkdirSync(join(alt, 'fotos'));
+  writeFileSync(join(alt, 'fotos', 'evalt.jpg'), KLEIN);
+  const db = new Database(join(alt, 'pizza_app.sqlite'));
+  db.exec('CREATE TABLE photos (event_id TEXT PRIMARY KEY, filename TEXT NOT NULL, created_at INTEGER NOT NULL)');
+  db.prepare('INSERT INTO photos VALUES (?, ?, ?)').run('evalt', 'evalt.jpg', 5);
+  db.close();
+
+  for (let lauf = 0; lauf < 2; lauf++) { // der zweite Start darf nichts mehr verändern
+    const a = await startApp(alt), k = client(a); await k.login();
+    try {
+      assert.deepEqual((await k.call('GET', '/api/state')).body.photos, [{eventId: 'evalt', id: 'erstes'}]);
+      const r = await a.inject({method: 'GET', url: '/api/events/evalt/photos/erstes', headers: {cookie: k.cookie}});
+      assert.equal(r.statusCode, 200);
+      assert.deepEqual(r.rawPayload, KLEIN, 'die Datei bleibt unverändert');
+      assert.equal(a.db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name = 'photos'").get().n, 0, 'die alte Tabelle ist weg');
+    } finally { await a.close(); }
+  }
+  removeDir(alt);
 });

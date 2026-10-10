@@ -109,7 +109,7 @@ Ein Admin setzt unter «Konto» ein neues Passwort. Hat der einzige Admin sein P
 
 - Passwörter sind mit argon2id gehasht. Nach 5 Fehlversuchen ist ein Konto 15 Minuten gesperrt, zusätzlich gilt eine Begrenzung pro IP-Adresse.
 - Kein offenes Registrieren: Benutzer legt nur ein Admin an.
-- Fotos dekodiert der Server und speichert sie neu als JPEG, ohne Metadaten wie den Aufnahmeort. Angenommen wird nur JPEG bis 2 MB; ausgeliefert wird nur mit Anmeldung.
+- Fotos dekodiert der Server und speichert sie neu als JPEG, ohne Metadaten wie den Aufnahmeort. Angenommen wird nur JPEG bis 2 MB, höchstens 10 Fotos pro Event; ausgeliefert wird nur mit Anmeldung.
 - Rezepte und Events prüft der Server auf die erwarteten Typen, und die Oberfläche maskiert alles, was sie anzeigt.
 - Die App ist für das Heimnetz gedacht. Stelle sie nicht ohne weiteren Schutz ins Internet.
 

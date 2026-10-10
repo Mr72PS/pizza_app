@@ -23,7 +23,7 @@ const rezepte = REZEPT_FELDER.map((f, i) => ({id: 'r' + i, feld: f, data: {...st
 // Zu jedem präparierten Rezept ein Event, damit es auch in Zeitplan, Anleitung und Einkaufsliste auftaucht
 // Ein Rezept und ein Event mit einer Teigführung, die es nicht gibt
 const KAPUTT = [{id: 'rk', data: {...structuredClone(napo), id: 'rk', methode: 'gibtsnicht'}}, {id: 'ek', data: {...structuredClone(basisEvent), id: 'ek', methode: 'gibtsnicht'}}];
-const OHNE_FOTO = {id: 'eo', data: {...structuredClone(basisEvent), id: 'eo', log: {...basisEvent.log, foto: false}}};
+const OHNE_FOTO = {id: 'eo', data: {...structuredClone(basisEvent), id: 'eo'}};
 const rezeptEvents = rezepte.map((r, i) => ({id: 'er' + i, feld: 'Rezept.' + r.feld, data: {...structuredClone(basisEvent), id: 'er' + i, recipeId: r.id}}));
 
 let klick, html;
@@ -47,6 +47,8 @@ before(async () => {
     if (url === '/api/state') return antwort(200, {
       recipes: [{id: 'napo', data: napo, updatedAt: 1}, {...KAPUTT[0], updatedAt: 1}, ...rezepte.map(r => ({id: r.id, data: r.data, updatedAt: 1}))],
       events: [{...KAPUTT[1], updatedAt: 1}, {...OHNE_FOTO, updatedAt: 1}, ...[...events, ...rezeptEvents].map(e => ({id: e.id, data: e.data, updatedAt: 1}))],
+      // Jedes Event ausser «eo» hat ein Foto, e0 zwei, e1 dazu eines mit präparierter Kennung
+      photos: [...[KAPUTT[1], ...events, ...rezeptEvents].map(e => ({eventId: e.id, id: 'f1'})), {eventId: 'e0', id: 'f2'}, {eventId: 'e1', id: BOESE}],
     });
     return antwort(204, null);
   };
@@ -61,7 +63,7 @@ function zeigt(dataset) {
   try { klick(dataset); } catch { return false; }
   return html.includes(LECK);
 }
-const EVENT_ANSICHTEN = id => [{openEvent: id}, {shop: id}, {log: id}, {guide: id}, {editEvent: id}];
+const EVENT_ANSICHTEN = id => [{openEvent: id}, {shop: id}, {log: id}, {guide: id}, {editEvent: id}, {again: id}, {lbE: id, lbP: 'f1'}, {lbE: id, lbP: 'f1', lbAlle: '1'}, {lbE: id, lbP: BOESE}];
 const REZEPT_ANSICHTEN = id => [{openRecipe: id}, {editRecipe: id}, {newEvent: id}];
 
 test('6a: Listen und Konto zeigen gespeicherte Texte nie als HTML', async () => {
@@ -98,12 +100,49 @@ test('6e: ein Datensatz mit unbekannter Teigführung legt weder die Event-Liste 
   }
 });
 
-test('6f: die Galerie zeigt nur Events mit Foto, mit Datum und Bewertung darunter und ohne gespeicherte Texte als HTML', () => {
+test('6f: die Galerie zeigt jedes Foto als Kachel, mit Datum und Bewertung darunter und ohne gespeicherte Texte als HTML', () => {
   html = '';
   assert.doesNotThrow(() => klick({nav: 'galerie'}));
   assert.ok(!html.includes(LECK), 'kein Feld kommt als HTML an');
-  assert.match(html, /<button[^>]*data-open-event="e0"[^>]*><img[^>]*src="\/api\/events\/e0\/photo\?v=1"[^>]*><span[^>]*><span>Sa, 5\.1\.2030<\/span><span[^>]*>★ 4<\/span><\/span><\/button>/);
-  assert.ok(!html.includes('data-open-event="eo"'), 'Event ohne Foto fehlt');
+  for (const pid of ['f1', 'f2']) assert.match(html, new RegExp(`<button[^>]*data-lb-e="e0"[^>]*data-lb-p="${pid}"[^>]*><img[^>]*src="/api/events/e0/photos/${pid}"[^>]*><span[^>]*><span>Sa, 5\\.1\\.2030</span><span[^>]*>★ 4</span></span></button>`));
+  assert.ok(!html.includes('data-lb-e="eo"'), 'Event ohne Foto fehlt');
+});
+
+test('6h: Grossansicht blättert durch die Galerie oder durch die Fotos eines Events', () => {
+  html = ''; klick({nav: 'galerie'}); klick({lbE: 'e0', lbP: 'f1', lbAlle: '1'});
+  assert.match(html, /<img[^>]*src="\/api\/events\/e0\/photos\/f1"/);
+  assert.match(html, /data-lb-e="e0"[^>]*data-lb-p="f2"[^>]*data-lb-alle/, 'weiter zum nächsten Foto der Galerie');
+  assert.ok(html.includes('data-zum-event="e0"'), 'aus der Galerie führt ein Knopf zum Event');
+
+  klick({zumEvent: 'e0'});
+  assert.ok(html.includes('data-nav="galerie">‹ Galerie'), 'vom Event zurück in die Galerie');
+  klick({nav: 'events'}); klick({openEvent: 'e0'});
+  assert.ok(html.includes('data-nav="events">‹ Events'), 'sonst zurück zu den Events');
+
+  klick({lbE: 'e0', lbP: 'f2'});
+  assert.ok(html.includes('2 / 2'), 'aus dem Event nur dessen Fotos');
+  assert.ok(!html.includes('data-zum-event'));
+  klick({lbZu: ''});
+  assert.ok(html.includes('Backprotokoll'), 'Schliessen führt zurück ins Event');
+});
+
+test('6i: das Event zeigt alle seine Fotos, das Protokollformular jedes mit eigenem Entfernen-Knopf', () => {
+  html = ''; klick({openEvent: 'e0'});
+  for (const pid of ['f1', 'f2']) assert.ok(html.includes(`src="/api/events/e0/photos/${pid}"`), pid);
+  klick({log: 'e0'});
+  for (const pid of ['f1', 'f2']) assert.ok(html.includes(`data-foto-del="${pid}"`), pid);
+  assert.match(html, /<input type="file" id="fotoIn"[^>]*multiple/);
+});
+
+test('6j: «Nochmals so» öffnet ein neues Event mit den Angaben des alten und einem neuen Termin', () => {
+  html = ''; klick({openEvent: 'eo'});
+  assert.ok(html.includes('data-again="eo"'));
+  klick({again: 'eo'});
+  assert.ok(html.includes('>Event planen</h1>'), 'ein neues Event, nicht das alte zum Ändern');
+  assert.ok(html.includes('name="name" value="Pizza-Abend"'));
+  assert.ok(html.includes('name="anzahl" min="1" max="40" value="3"'));
+  const termin = /name="essen" value="([^"]*)"/.exec(html)[1];
+  assert.ok(new Date(termin) > new Date() && new Date(termin).getDay() === 6, 'nächster Samstag statt des alten Termins: ' + termin);
 });
 
 test('6g: die Event-Liste zeigt das Jahr über dem Datum', () => {
