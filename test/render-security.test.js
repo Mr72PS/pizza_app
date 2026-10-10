@@ -23,6 +23,7 @@ const rezepte = REZEPT_FELDER.map((f, i) => ({id: 'r' + i, feld: f, data: {...st
 // Zu jedem präparierten Rezept ein Event, damit es auch in Zeitplan, Anleitung und Einkaufsliste auftaucht
 // Ein Rezept und ein Event mit einer Teigführung, die es nicht gibt
 const KAPUTT = [{id: 'rk', data: {...structuredClone(napo), id: 'rk', methode: 'gibtsnicht'}}, {id: 'ek', data: {...structuredClone(basisEvent), id: 'ek', methode: 'gibtsnicht'}}];
+const OHNE_FOTO = {id: 'eo', data: {...structuredClone(basisEvent), id: 'eo', log: {...basisEvent.log, foto: false}}};
 const rezeptEvents = rezepte.map((r, i) => ({id: 'er' + i, feld: 'Rezept.' + r.feld, data: {...structuredClone(basisEvent), id: 'er' + i, recipeId: r.id}}));
 
 let klick, html;
@@ -45,7 +46,7 @@ before(async () => {
     if (url === '/api/users') return antwort(200, {users: [{id: 1, username: BOESE, role: 'admin'}, {id: 2, username: BOESE + '2', role: 'user', disabled: true, locked: true}]});
     if (url === '/api/state') return antwort(200, {
       recipes: [{id: 'napo', data: napo, updatedAt: 1}, {...KAPUTT[0], updatedAt: 1}, ...rezepte.map(r => ({id: r.id, data: r.data, updatedAt: 1}))],
-      events: [{...KAPUTT[1], updatedAt: 1}, ...[...events, ...rezeptEvents].map(e => ({id: e.id, data: e.data, updatedAt: 1}))],
+      events: [{...KAPUTT[1], updatedAt: 1}, {...OHNE_FOTO, updatedAt: 1}, ...[...events, ...rezeptEvents].map(e => ({id: e.id, data: e.data, updatedAt: 1}))],
     });
     return antwort(204, null);
   };
@@ -95,4 +96,12 @@ test('6e: ein Datensatz mit unbekannter Teigführung legt weder die Event-Liste 
     assert.doesNotThrow(() => klick({nav}), nav);
     assert.ok(html.includes('data-open-' + (nav === 'events' ? 'event' : 'recipe') + '="' + id + '"'), nav + ' zeigt den Eintrag');
   }
+});
+
+test('6f: die Galerie zeigt nur Events mit Foto, mit Datum darunter und ohne gespeicherte Texte als HTML', () => {
+  html = '';
+  assert.doesNotThrow(() => klick({nav: 'galerie'}));
+  assert.ok(!html.includes(LECK), 'kein Feld kommt als HTML an');
+  assert.match(html, /<button[^>]*data-open-event="e0"[^>]*><img[^>]*src="\/api\/events\/e0\/photo\?v=1"[^>]*><span[^>]*>Sa, 5\.1\.2030<\/span><\/button>/);
+  assert.ok(!html.includes('data-open-event="eo"'), 'Event ohne Foto fehlt');
 });

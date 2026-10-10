@@ -119,6 +119,10 @@ a{color:inherit}
 .starpick button{background:none;border:0;font-size:2.2rem;line-height:1;padding:2px 4px;color:var(--line)}
 .starpick button.on{color:var(--tomato)}
 .foto{display:block;max-width:100%;border-radius:14px;margin:10px 0}
+.galerie{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(2,1fr);gap:14px 12px}
+.galerie button{display:block;width:100%;padding:0;border:0;background:none;color:inherit;text-align:left}
+.galerie img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:14px;background:var(--surface)}
+.galerie span{display:block;margin-top:6px}
 .card{background:var(--surface);border-radius:16px;padding:16px;margin-top:6px}
 /* Formular */
 form{display:grid;gap:16px}
@@ -145,7 +149,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink);outline:none}
 
 /* Navigation */
 nav{position:fixed;left:0;right:0;bottom:0;background:var(--ink);padding-bottom:env(safe-area-inset-bottom,0px);z-index:5}
-nav div{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr)}
+nav div{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
 nav button{background:none;border:0;color:var(--bg);opacity:.6;min-height:60px;font-family:var(--display);font-weight:700;font-size:1.05rem}
 nav button[aria-current="page"]{opacity:1;box-shadow:inset 0 4px 0 var(--tomato)}
 @media (prefers-reduced-motion:no-preference){.bar i{transition:width .25s}}

@@ -172,6 +172,15 @@ function viewEvents(){
   ${vorbei.length?`<h2>Vorbei</h2><ul class="list">${vorbei.map(li).join('')}</ul>`:''}`;
 }
 
+// Alle Fotos aus den Backprotokollen, das neueste Event zuerst
+function viewGalerie(){
+  const evs=state.events.filter(e=>e.log&&e.log.foto).sort((a,b)=>(new Date(b.essen)-new Date(a.essen))||0);
+  evs.forEach(e=>loadFoto(e.id));
+  const datum=e=>{const d=new Date(e.essen); return isNaN(d)?'':`${TAGE[d.getDay()]}, ${d.getDate()}.${d.getMonth()+1}.${d.getFullYear()}`;};
+  return `<div class="top"><h1>Galerie</h1></div>
+  ${evs.length?`<ul class="galerie">${evs.filter(e=>fotos[e.id]).map(e=>`<li><button data-open-event="${esc(e.id)}"><img src="${esc(fotos[e.id])}" alt="Foto: ${esc(e.name||'Pizza-Abend')}" loading="lazy"><span class="small muted">${datum(e)}</span></button></li>`).join('')}</ul>`:'<p class="empty">Noch keine Fotos. Füge im Backprotokoll eines Events ein Foto hinzu.</p>'}`;
+}
+
 function viewEventForm(){
   const e=ui.id?state.events.find(x=>x.id===ui.id):null;
   let def=new Date(); def.setDate(def.getDate()+((6-def.getDay()+7)%7||7)); def.setHours(19,0,0,0);
@@ -427,10 +436,10 @@ async function start(){
 function render(){
   document.querySelector('nav').hidden=!me;
   if(!me&&!loadErr){app.innerHTML=viewLogin(); return;}
-  const V={events:viewEvents,eventForm:viewEventForm,event:viewEvent,guide:viewGuide,shop:viewShop,log:viewLog,recipes:viewRecipes,recipe:viewRecipe,recipeForm:viewRecipeForm,konto:viewKonto};
+  const V={events:viewEvents,eventForm:viewEventForm,event:viewEvent,guide:viewGuide,shop:viewShop,log:viewLog,recipes:viewRecipes,recipe:viewRecipe,recipeForm:viewRecipeForm,galerie:viewGalerie,konto:viewKonto};
   if(!loaded){app.innerHTML=loadErr?'<h1>Pizza App</h1><p class="note">Die Daten konnten nicht geladen werden.</p><p style="margin-top:16px"><button class="btn" data-reload>Nochmals versuchen</button></p>':'<p class="muted">Lädt …</p>'; return;}
   app.innerHTML=(saveErr?'<p class="note" style="margin:0 0 14px">Die letzte Änderung ist noch nicht gespeichert. Die App versucht es weiter.</p>':'')+(V[ui.view]||viewEvents)();
-  const tab=ui.view==='konto'?'konto':['recipes','recipe','recipeForm'].includes(ui.view)?'recipes':'events';
+  const tab=ui.view==='konto'||ui.view==='galerie'?ui.view:['recipes','recipe','recipeForm'].includes(ui.view)?'recipes':'events';
   document.querySelectorAll('nav button').forEach(b=>b.dataset.nav===tab?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current'));
 }
 
