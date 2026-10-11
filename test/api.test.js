@@ -132,7 +132,10 @@ test('Schriften, Bilder, Manifest und Service Worker liegen lokal', async () => 
   const liste = JSON.parse(sw.body.match(/const STATISCH = (\[[\s\S]*?\]);/)[1].replaceAll("'", '"').replace(/,\s*\]/, ']'));
   for (const url of liste) assert.equal((await get(url)).statusCode, 200, url);
   // Nichts wird mehr von aussen geladen, nichts ist als Base64 eingebettet
-  for (const url of ['/', '/app.css', '/app.js']) assert.doesNotMatch((await get(url)).body, /googleapis|gstatic|data:image|window\.claude|localStorage/, url);
+  for (const url of ['/', '/app.css', '/app.js']) assert.doesNotMatch((await get(url)).body, /googleapis|gstatic|data:image|window\.claude/, url);
+  // Gespeichert wird auf dem Server. Auf dem Gerät liegt einzig die Lesekopie für den Start ohne Verbindung (test/offline.test.js).
+  for (const url of ['/', '/app.css']) assert.doesNotMatch((await get(url)).body, /localStorage/, url);
+  assert.deepEqual((await get('/app.js')).body.match(/localStorage\.\w+\([^,)]*/g), ['localStorage.setItem(LAGER', 'localStorage.removeItem(LAGER', 'localStorage.getItem(LAGER']);
   assert.doesNotMatch((await get('/')).headers['content-security-policy'], /https?:/);
 });
 

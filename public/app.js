@@ -14,7 +14,7 @@ let synced={recipes:new Map(), events:new Map()};
 async function api(method,url,body,headers={}){
   const res=await fetch(url,{method,headers:{...(body?{'content-type':'application/json'}:{}),...headers},body:body?JSON.stringify(body):undefined});
   // Sitzung abgelaufen oder widerrufen: zurück zur Anmeldung
-  if(res.status===401&&url!=='/api/login'&&me){me=null; loaded=false; ui.msg=''; render();}
+  if(res.status===401&&url!=='/api/login'&&me){me=null; loaded=false; offline=false; ui.msg=''; vergessen(); render();}
   return {status:res.status, etag:res.headers?res.headers.get('etag'):null, data:res.status===204||res.status===304?null:await res.json().catch(()=>null)};
 }
 // Marke des zuletzt geladenen Stands: Der Abgleich schickt sie mit und bekommt 304, solange niemand etwas geändert hat
@@ -26,8 +26,29 @@ function adopt(s){
 }
 async function loadState(){
   const r=await api('GET','/api/state'); if(r.status!==200) throw new Error('state '+r.status);
-  adopt(r.data); stateTag=r.etag; loaded=true; loadErr=false;
+  adopt(r.data); stateTag=r.etag; loaded=true; loadErr=false; merken();
 }
+
+/* ---------- Offline: der letzte Stand liegt auf dem Gerät und lässt sich ohne Server lesen, aber nicht ändern ---------- */
+const LAGER='pizza_app.stand';
+let offline=false, offlineStand=0;
+function merken(){try{localStorage.setItem(LAGER,JSON.stringify({ts:Date.now(),me,recipes:state.recipes,events:state.events,fotos:fotoIds}));}catch(e){}}
+function vergessen(){try{localStorage.removeItem(LAGER);}catch(e){}}
+// Start ohne Server: den gemerkten Stand zeigen. Liefert false, wenn es keinen gibt.
+function ausLager(){
+  let l=null; try{l=JSON.parse(localStorage.getItem(LAGER));}catch(e){}
+  if(!l||!l.me||!Array.isArray(l.recipes)||!Array.isArray(l.events)) return false;
+  me=l.me; state={recipes:l.recipes,events:l.events}; fotoIds=l.fotos||{}; synced={recipes:new Map(),events:new Map()};
+  offline=true; offlineStand=l.ts; loaded=true; loadErr=false; return true;
+}
+// Der Server antwortet wieder: aktuellen Stand laden und das Ändern freigeben
+async function wiederOnline(){
+  try{
+    const r=await api('GET','/api/me'); if(r.status!==200||!r.data) return;
+    me=r.data.user; await loadState(); offline=false; render();
+  }catch(e){}
+}
+const NUR_LESEN='Ohne Verbindung zum Server lässt sich nichts ändern.';
 let saving=false, dirty=false, retry=null;
 function save(){dirty=true; pump();}
 // Vergleicht den Zustand mit dem Stand auf dem Server und schickt nur, was sich geändert hat
@@ -54,6 +75,7 @@ async function pump(){
         }
       }
     }
+    merken();
     if(saveErr){saveErr=false; render();}
   }catch(e){
     dirty=true; if(!saveErr){saveErr=true; render();}
@@ -69,12 +91,14 @@ async function conflict(msg){
 }
 // Änderungen anderer Benutzer nachladen, ohne offene Formulare zu stören
 async function refresh(){
-  if(!me||!loaded||saving||dirty||fotoBusy||document.hidden) return;
+  if(!me||document.hidden) return;
+  if(offline) return wiederOnline();
+  if(!loaded||saving||dirty||fotoBusy) return;
   try{
     const r=await api('GET','/api/state',undefined,stateTag?{'if-none-match':stateTag}:{}); if(r.status!==200||saving||dirty||fotoBusy) return;
     stateTag=r.etag;
     if(KINDS.every(k=>r.data[k].length===synced[k].size&&r.data[k].every(x=>(synced[k].get(x.id)||{}).ver===x.updatedAt))&&JSON.stringify(r.data.photos||[])===fotoSig) return;
-    adopt(r.data);
+    adopt(r.data); merken();
     if(!['eventForm','recipeForm','log'].includes(ui.view)&&!document.querySelector('details[open]')) render();
   }catch(e){}
 }
@@ -500,8 +524,12 @@ async function changeUser(method,id,body,ok){
   await loadUsers(); kontoMsg(r.status<300?ok:fehlerTxt(r));
 }
 async function start(){
-  try{const r=await api('GET','/api/me'); if(r.status===200){me=r.data.user; await loadState();} else if(r.status!==401) loadErr=true;}
-  catch(e){loadErr=true;}
+  try{
+    const r=await api('GET','/api/me');
+    if(r.status===200&&r.data){me=r.data.user; await loadState();}
+    else if(r.status===401) vergessen();
+    else throw new Error('me '+r.status);
+  }catch(e){if(!ausLager()) loadErr=true;}
   render();
 }
 
@@ -510,18 +538,27 @@ function render(){
   if(!me&&!loadErr){app.innerHTML=viewLogin(); return;}
   const V={events:viewEvents,eventForm:viewEventForm,event:viewEvent,guide:viewGuide,shop:viewShop,log:viewLog,recipes:viewRecipes,recipe:viewRecipe,recipeForm:viewRecipeForm,galerie:viewGalerie,foto:viewFoto,konto:viewKonto};
   if(!loaded){app.innerHTML=loadErr?'<h1>Pizza App</h1><p class="note">Die Daten konnten nicht geladen werden.</p><p style="margin-top:16px"><button class="btn" data-reload>Nochmals versuchen</button></p>':'<p class="muted">Lädt …</p>'; return;}
-  app.innerHTML=(saveErr?'<p class="note" style="margin:0 0 14px">Die letzte Änderung ist noch nicht gespeichert. Die App versucht es weiter.</p>':'')+(V[ui.view]||viewEvents)();
+  const seit=new Date(offlineStand);
+  app.innerHTML=(offline?`<p class="note" style="margin:0 0 14px">Offline: Du siehst den Stand von ${TAGE_LANG[seit.getDay()]}, ${dm(seit)} um ${hm(seit)} Uhr. ${NUR_LESEN}</p>`:'')+(saveErr?'<p class="note" style="margin:0 0 14px">Die letzte Änderung ist noch nicht gespeichert. Die App versucht es weiter.</p>':'')+(V[ui.view]||viewEvents)();
   const tab=ui.view==='konto'?'konto':['recipes','recipe','recipeForm'].includes(ui.view)?'recipes':ui.view==='galerie'||(ui.view==='foto'&&ui.lb.alle)||ui.von==='galerie'?'galerie':'events';
   document.querySelectorAll('nav button').forEach(b=>b.dataset.nav===tab?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current'));
 }
 
 /* ---------- Aktionen ---------- */
 function ownRecipes(){return state.recipes;}
+// Knöpfe, die Daten ändern oder ein Formular zum Ändern öffnen
+const SCHREIBT=['again','userPw','userPatch','userDel','newEvent','editEvent','delEvent','apply','belag','shopDel','log','fotoDel','logDel','logApply','toggle','newRecipe','editRecipe','delRecipe'];
 
 document.addEventListener('click',ev=>{
   const t=ev.target.closest('button'); if(!t) return; const d=t.dataset;
   if('reload' in d) return location.reload();
   if(!loaded) return;
+  if('logout' in d) vergessen();
+  // Offline bleibt alles gesperrt, was etwas ändert. In der Anleitung führt «Erledigt, weiter» trotzdem zum nächsten Schritt.
+  if(offline){
+    if(SCHREIBT.some(k=>k in d)) return alert(NUR_LESEN);
+    if(d.nav==='konto'){ui.msg=''; return go('konto');}
+  }
   if(d.openEvent) return go('event',d.openEvent);
   if(d.nav==='konto'){ui.msg=''; ui.users=null; loadUsers(); loadVersion(); return go('konto');}
   if(d.nav) return go(d.nav,null,{von:null});
@@ -555,7 +592,7 @@ document.addEventListener('click',ev=>{
     if(r0&&confirm(`Ofenwerte im Rezept «${r0.name}» ersetzen?`)){const r=ownRecipes().find(x=>x.id===e.recipeId); if(L.oben) r.oben=L.oben; if(L.unten) r.unten=L.unten; save(); render();} return; }
   if(d.toggle){const e=state.events.find(x=>x.id===ui.id); e.done=e.done||{}; e.done[d.toggle]=!e.done[d.toggle]; save(); return render();}
   if(d.guide){const e=state.events.find(x=>x.id===d.guide), p=plan(eff(recipe(e.recipeId),e),e); const ni=nextIdx(e,p); return go('guide',e.id,{step:ni<0?0:ni});}
-  if(d.done){const e=state.events.find(x=>x.id===ui.id); e.done=e.done||{}; e.done[d.done]=true; save();}
+  if(d.done&&!offline){const e=state.events.find(x=>x.id===ui.id); e.done=e.done||{}; e.done[d.done]=true; save();}
   if(d.step!==undefined){const n=Number(d.step); return n<0?go('event',ui.id):go('guide',ui.id,{step:n});}
   if(d.openRecipe){ui.calcM=''; ui.calcN=(recipe(d.openRecipe)||{}).stdAnzahl||3; return go('recipe',d.openRecipe);}
   if('newRecipe' in d) return go('recipeForm',null);
@@ -570,6 +607,7 @@ document.addEventListener('input',ev=>{
 });
 document.addEventListener('change',async ev=>{
   if(ev.target.id==='calcM'){ui.calcM=ev.target.value; return render();}
+  if(offline&&ev.target.dataset.shopkey){ev.target.checked=!ev.target.checked; return alert(NUR_LESEN);}
   if(ev.target.dataset.shopkey){const e=state.events.find(x=>x.id===ui.id); e.shop=e.shop||{}; e.shop.ok=e.shop.ok||{}; e.shop.ok[ev.target.dataset.shopkey]=ev.target.checked; ev.target.closest('.chk').classList.toggle('on',ev.target.checked); return save();}
   if(ev.target.id==='fotoIn'){const e=state.events.find(x=>x.id===ui.id), files=[...(ev.target.files||[])]; if(!e||!files.length) return;
     const frei=Math.max(0,MAX_FOTOS-fotoWahl(e).length);
@@ -597,6 +635,7 @@ document.addEventListener('change',async ev=>{
 document.addEventListener('submit',ev=>{
   ev.preventDefault(); const f=ev.target, v=Object.fromEntries(new FormData(f));
   if(f.id==='loginForm') return doLogin(v);
+  if(offline) return alert(NUR_LESEN);
   if(f.id==='pwForm') return doPw(v);
   if(f.id==='userForm') return doUser(v);
   if(f.id==='eventForm'){
@@ -633,5 +672,6 @@ document.addEventListener('keydown',ev=>{
   if(ev.key==='ArrowRight') lbSchritt(1); else if(ev.key==='ArrowLeft') lbSchritt(-1); else if(ev.key==='Escape') lbZu();
 });
 document.addEventListener('visibilitychange',refresh);
+if(globalThis.addEventListener) globalThis.addEventListener('online',refresh);
 setInterval(refresh,60000);
 setInterval(()=>{if(ui.view==='guide'&&!document.querySelector('details[open]')) render();},60000);
