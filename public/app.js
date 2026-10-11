@@ -160,6 +160,7 @@ const QUELLEN={
 };
 const IMG_KOPF='/img/kopf.webp';
 const IMG_SIEGEL='/img/siegel.webp';
+const IMG_PLATZ='/img/icon-192.png';
 const SEED_QUELLE={donkarl:'mein',biga100:'mein',avpn:'web',svens48:'web',lewizza51:'web'};
 const SEED_URL={lewizza51:'https://www.instagram.com/lewizza_macht_pizza/',svens48:'https://www.teichners.de/blogs/blog/der-absolute-favorit-svens-48-stunden-pizzateig-rezept',avpn:'https://www.pizzanapoletana.org/public/pdf/Disciplinare-2024-ENG.pdf'};
 function src(r){return (r.quelle&&QUELLEN[r.quelle]?r.quelle:null)||SEED_QUELLE[r.id]||(SEED.some(x=>x.id===r.id)?'vorlage':'mein');}
@@ -197,14 +198,17 @@ function viewEvents(){
   const now=Date.now();
   const evs=[...state.events].sort((a,b)=>new Date(a.essen)-new Date(b.essen));
   const kommend=evs.filter(e=>new Date(e.essen).getTime()+4*3600e3>=now), vorbei=evs.filter(e=>!kommend.includes(e)).reverse();
-  const li=e=>{const d=new Date(e.essen), r=recipe(e.recipeId);
-    return `<li class="hasdel"><button class="item" data-open-event="${e.id}"><span class="when"><span>${d.getFullYear()}</span>${TAGE[d.getDay()]} ${dm(d)}<span>${hm(d)} Uhr</span></span><span><span class="t">${esc(e.name||'Pizza-Abend')}</span><br><span class="small muted">${esc(e.anzahl)} × ${esc(r?r.name:'Rezept gelöscht')}${r&&KURZ[e.methode]&&e.methode!==r.methode?', '+KURZ[e.methode].toLowerCase():''}</span>${e.log&&e.log.sterne?'<br>'+sterne(e.log.sterne):''}</span><span class="chev" aria-hidden="true">›</span></button><button class="del" data-del-event="${e.id}" aria-label="${esc(e.name||'Pizza-Abend')} löschen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></li>`;};
-  return `<div class="top"><h1>Pizza App</h1></div>
-  <p class="muted">Sag, wann die Pizza auf dem Teller sein soll. Die App rechnet zurück, wann du mit dem Teig anfangen musst.</p>
-  <p style="margin:18px 0 0"><button class="btn primary" data-new-event>Event planen</button></p>
+  // Bild der Karte: das erste Foto aus dem Backprotokoll, sonst das App-Symbol
+  const bild=e=>{const f=fotosOf(e.id)[0]; return `<img class="bild" src="${esc(f?fotoKlein(e.id,f):IMG_PLATZ)}" alt="" loading="lazy">`;};
+  const start=(e,r)=>{try{const t=plan(eff(r,e),e).steps[0].t; return ` · Start ${TAGE[t.getDay()]} ${hm(t)}`;}catch(x){return '';}};
+  const li=(e,offen)=>{const d=new Date(e.essen), r=recipe(e.recipeId);
+    return `<li class="hasdel"><button class="kachel" data-open-event="${e.id}">${bild(e)}<span class="txt"><span class="when"><span>${d.getFullYear()}</span>${TAGE[d.getDay()]} ${dm(d)}<span>${hm(d)} Uhr</span></span><span class="t">${esc(e.name||'Pizza-Abend')}</span><span class="small muted">${esc(e.anzahl)} × ${esc(r?r.name:'Rezept gelöscht')}${r&&KURZ[e.methode]&&e.methode!==r.methode?', '+KURZ[e.methode].toLowerCase():''}${offen&&r?start(e,r):''} ${fotoStern(e)}</span></span></button><button class="del" data-del-event="${e.id}" aria-label="${esc(e.name||'Pizza-Abend')} löschen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></li>`;};
+  return `<div class="kopfzeile"><span class="src mein"><img src="${IMG_KOPF}" alt=""></span><h1>Pizza App</h1></div>
+  ${evs.length?'':'<p class="muted">Sag, wann die Pizza auf dem Teller sein soll. Die App rechnet zurück, wann du mit dem Teig anfangen musst.</p>'}
+  <p style="margin:0"><button class="btn primary breit" data-new-event>Event planen</button></p>
   <h2>Geplant</h2>
-  ${kommend.length?`<ul class="list">${kommend.map(li).join('')}</ul>`:'<p class="empty">Noch kein Event geplant.</p>'}
-  ${vorbei.length?`<h2>Vorbei</h2><ul class="list">${vorbei.map(li).join('')}</ul>`:''}`;
+  ${kommend.length?`<ul class="kacheln">${kommend.map(e=>li(e,true)).join('')}</ul>`:'<p class="empty">Noch kein Event geplant.</p>'}
+  ${vorbei.length?`<h2>Gebacken</h2><ul class="kacheln">${vorbei.map(e=>li(e,false)).join('')}</ul>`:''}`;
 }
 
 // Alle Fotos aus den Backprotokollen, das neueste Event zuerst
@@ -285,12 +289,25 @@ function viewEventForm(){
 
 
 function nextIdx(e,p){return p.steps.findIndex(s=>!(e.done||{})[s.k]);}
+// Wie lange es bis zu einem Schritt noch dauert; leer, wenn er schon vorbei ist
+function bis(s){
+  const diff=(s.t-new Date())/60000;
+  return diff>=2880?'in '+Math.floor(diff/1440)+' Tagen':diff>1?'in '+span(diff):diff>-s.min?'jetzt':'';
+}
+/* Die rote Karte zeigt den nächsten offenen Schritt, den Fortschritt und die Zeit bis dahin. */
+function startKarte(p,ni){
+  const n=p.steps.length;
+  if(ni<0) return `<div class="start"><div class="lbl">Alle ${n} Schritte erledigt</div><div class="big">Fertig</div><div class="what">Guten Appetit</div><div class="bar"><i style="width:100%"></i></div></div>`;
+  const s=p.steps[ni];
+  return `<div class="start"><div class="lbl">${ni?'Nächster Schritt':'Starte'} am ${TAGE_LANG[s.t.getDay()]}, ${dm(s.t)} um</div><div class="big">${hm(s.t)}</div><div class="what">${esc(s.ttl)}</div>
+    <div class="fort"><span>Schritt ${ni+1} von ${n}</span><span>${bis(s)}</span></div><div class="bar"><i style="width:${ni/n*100}%"></i></div></div>`;
+}
 
 function viewEvent(){
   const e=state.events.find(x=>x.id===ui.id); if(!e) return viewEvents();
   const r=recipe(e.recipeId);
   if(!r) return `<button class="back" data-nav="events">‹ Events</button><h1 style="font-size:2rem">${esc(e.name||'Pizza-Abend')}</h1><p class="note">Das Rezept zu diesem Event wurde gelöscht.</p><p style="margin-top:16px"><button class="btn" data-edit-event="${e.id}">Anderes Rezept wählen</button></p>`;
-  const R=eff(r,e), p=plan(R,e), s0=p.steps[0], ni=nextIdx(e,p), done=e.done||{}, sug=vorschlaege(R,e), L=e.log;
+  const R=eff(r,e), p=plan(R,e), ni=nextIdx(e,p), done=e.done||{}, sug=vorschlaege(R,e), L=e.log;
   let tl='', last='';
   p.steps.forEach((s,i)=>{
     if(dayKey(s.t)!==last){last=dayKey(s.t); tl+=`<li class="day">${TAGE[s.t.getDay()]} ${dm(s.t)}</li>`;}
@@ -301,10 +318,10 @@ function viewEvent(){
   return `${ui.von==='galerie'?'<button class="back" data-nav="galerie">‹ Galerie</button>':'<button class="back" data-nav="events">‹ Events</button>'}
   <h1 style="font-size:2rem">${esc(e.name||'Pizza-Abend')}</h1>
   <p class="muted">${esc(p.n)} × ${esc(r.name)}${R!==r?' ('+(KURZ[R.methode]||'').toLowerCase()+')':''}, essen am ${TAGE_LANG[p.E.getDay()]}, ${dm(p.E)} um ${hm(p.E)} Uhr</p>
-  <div class="start"><div class="lbl">Starte am ${TAGE_LANG[s0.t.getDay()]}, ${dm(s0.t)} um</div><div class="big">${hm(s0.t)}</div><div class="what">${esc(s0.ttl)}</div></div>
+  ${startKarte(p,ni)}
   ${p.warn.map(w=>`<p class="note">${esc(w)}</p>`).join('')}
   ${sug.length?`<div class="sug"><h3>${p.nacht?'Vorschläge, damit alles tagsüber liegt':'Vorschläge, die zeitlich noch reichen'}</h3>${sug.map(c=>`<button class="sugb" data-apply="${c.D}|${c.P}"><strong>Start ${TAGE[c.t.getDay()]} ${dm(c.t)} um ${hm(c.t)}</strong><span>${esc(c.txt)}. Antippen zum Übernehmen.</span></button>`).join('')}</div>`:((p.nacht||p.past)?'<p class="small muted" style="margin-top:8px">Für dieses Rezept findet die App keine passende Variante. Wähle einen späteren Termin oder ein anderes Rezept.</p>':'')}
-  <div class="row" style="margin-top:14px"><button class="btn primary grow" data-guide="${e.id}">${ni>0?'Anleitung fortsetzen':'Schritt für Schritt starten'}</button></div>
+  <div class="row" style="margin-top:14px"><button class="btn gruen grow" data-guide="${e.id}">${ni>0?'Küchenmodus fortsetzen':'Küchenmodus starten'}</button></div>
   <div class="row" style="margin-top:10px"><button class="btn grow" data-shop="${e.id}">Einkaufsliste</button><button class="btn grow" data-edit-event="${e.id}">Ändern</button></div>
   <div class="row" style="margin-top:10px"><button class="btn grow" data-again="${e.id}">Nochmals so</button></div>
   <h2>Zeitplan</h2><p class="small muted">${esc(p.info)}. Tippe auf einen Schritt für die Details, auf den Punkt zum Abhaken.</p>
@@ -373,22 +390,41 @@ function viewLog(){
   ${e.log?`<p style="margin-top:20px"><button class="btn danger" data-log-del="${e.id}">Protokoll löschen</button></p>`:''}`;
 }
 
+/* Küchenmodus: ein Schritt pro Bildschirm, gross genug zum Lesen aus Distanz, ohne Navigation. Der Bildschirm bleibt an, wo das Gerät es kann. */
+const MIT_ZUTATEN=['vorteig','kneten','aktiv','autolyse'];
 function viewGuide(){
   const e=state.events.find(x=>x.id===ui.id), r=e&&recipe(e.recipeId); if(!e||!r) return viewEvents();
   const p=plan(eff(r,e),e), i=Math.min(Math.max(ui.step,0),p.steps.length-1), s=p.steps[i], last=i===p.steps.length-1;
-  const diff=(s.t-new Date())/60000;
-  const wann=diff>1?'in '+span(diff):(diff>-s.min?'jetzt':'');
-  return `<div class="guide"><button class="back" data-open-event="${e.id}">‹ Zeitplan</button>
-  <div class="count">Schritt ${i+1} von ${p.steps.length}</div><div class="bar"><i style="width:${(i+1)/p.steps.length*100}%"></i></div>
-  <div class="time">${hm(s.t)}</div><div class="muted">${TAGE_LANG[s.t.getDay()]}, ${dm(s.t)}${wann?' · '+wann:''}</div>
-  <h2>${esc(s.ttl)}</h2><ul>${s.d.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
-  <p class="muted">${s.k==='backen'?'':'Danach: '+span(s.min)+(last?'':' bis «'+esc(p.steps[i+1].ttl)+'» um '+hm(p.steps[i+1].t))}</p>
-  <div class="row" style="margin-top:22px">${i>0?`<button class="btn" data-step="${i-1}">Zurück</button>`:''}<button class="btn primary grow" data-done="${s.k}" data-step="${last?-1:i+1}">${last?'Fertig, guten Appetit':'Erledigt, weiter'}</button></div></div>`;
+  const wann=bis(s), zut=MIT_ZUTATEN.includes(s.k);
+  // Die erste Zeile dieser Schritte zählt die Zutaten auf: jede auf eine eigene Zeile, Kommas in Klammern bleiben
+  const zutaten=zut?String(s.d[0]).replace(/\.$/,'').split(/, (?![^(]*\))/).map(esc).join('<br>'):'';
+  return `<div class="kueche">
+  <div class="oben"><span>Schritt ${i+1} von ${p.steps.length}</span><span>${wach?'Bildschirm bleibt an':''}</span></div>
+  <div class="bar"><i style="width:${(i+1)/p.steps.length*100}%"></i></div>
+  <div class="time">${hm(s.t)}</div>
+  <h2>${esc(s.ttl)}</h2>
+  <p class="muted">${TAGE_LANG[s.t.getDay()]}, ${dm(s.t)}${wann?' · '+wann:''}${s.k==='backen'?'':' · dauert '+span(s.min)}</p>
+  ${zut?`<div class="zutat">${zutaten}</div>`:''}
+  <ul>${s.d.slice(zut?1:0).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+  ${last?'':`<p class="muted">Danach «${esc(p.steps[i+1].ttl)}» um ${hm(p.steps[i+1].t)}.</p>`}
+  <div class="fuss"><button class="btn gross" data-done="${s.k}" data-step="${last?-1:i+1}">${last?'Fertig, guten Appetit':'Erledigt, weiter'}</button>
+    <div class="row">${i>0?`<button class="btn quiet grow" data-step="${i-1}">‹ Zurück</button>`:''}<button class="btn quiet grow" data-open-event="${e.id}">Zum Zeitplan</button></div></div></div>`;
+}
+let wach=null, wachLaeuft=false;
+async function wachBleiben(an){
+  const wl=globalThis.navigator&&navigator.wakeLock;
+  if(!wl||wachLaeuft) return;
+  wachLaeuft=true;
+  try{
+    if(an&&!wach&&!document.hidden){wach=await wl.request('screen'); wach.addEventListener('release',()=>{wach=null;}); if(ui.view==='guide') render();}
+    else if(!an&&wach){const w=wach; wach=null; await w.release();}
+  }catch(e){wach=null;}
+  wachLaeuft=false;
 }
 
 function viewRecipes(){
-  const li=r=>`<li><button class="item" data-open-recipe="${r.id}">${srcIcon(r)}<span><span class="t">${esc(r.name)}</span><br><span class="small muted">${meth(r.methode).name}, ${g(r.dauer)} h, ${g(r.hyd)} % Wasser</span></span><span class="chev" aria-hidden="true">›</span></button></li>`;
-  const groups=['mein','web','vorlage'].map(q=>{const rs=recipes().filter(r=>src(r)===q); return rs.length?`<h2>${QUELLEN[q].gruppe}</h2><ul class="list">${rs.map(li).join('')}</ul>`:'';}).join('');
+  const li=r=>`<li><button class="kachel" data-open-recipe="${r.id}">${srcIcon(r)}<span class="txt"><span class="t">${esc(r.name)}</span><span class="small muted">${meth(r.methode).name}, ${g(r.dauer)} h, ${g(r.hyd)} % Wasser</span></span><span class="chev" aria-hidden="true">›</span></button></li>`;
+  const groups=['mein','web','vorlage'].map(q=>{const rs=recipes().filter(r=>src(r)===q); return rs.length?`<h2>${QUELLEN[q].gruppe}</h2><ul class="kacheln">${rs.map(li).join('')}</ul>`:'';}).join('');
   return `<div class="top"><h1>Rezepte</h1></div>
   <p class="muted">Alle Mengen stehen in Bäckerprozenten und werden pro Event auf die Anzahl Pizzen umgerechnet.</p>
   <p style="margin:18px 0 0"><button class="btn primary" data-new-recipe>Neues Rezept</button></p>
@@ -451,7 +487,8 @@ const fehlerTxt=r=>FEHLER[r.data&&r.data.error]||(r.status===429?'Zu viele Versu
 const msgBox=()=>ui.msg?`<p class="note" style="margin:0 0 6px">${esc(ui.msg)}</p>`:'';
 
 function viewLogin(){
-  return `<div class="top"><h1>Pizza App</h1></div>
+  return `<div class="login"><img class="seal" src="${IMG_SIEGEL}" alt="Siegel Pizzeria Pizzaiolo Patricio">
+  <h1>Pizza App</h1><p class="muted">Vom Essen rückwärts gerechnet.</p></div>
   <form id="loginForm">
     <label>Benutzername<input name="username" value="${esc(ui.loginName||'')}" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
     <label>Passwort<input type="password" name="password" autocomplete="current-password" required></label>
@@ -534,7 +571,8 @@ async function start(){
 }
 
 function render(){
-  document.querySelector('nav').hidden=!me;
+  document.querySelector('nav').hidden=!me||(loaded&&ui.view==='guide');
+  wachBleiben(!!me&&loaded&&ui.view==='guide');
   if(!me&&!loadErr){app.innerHTML=viewLogin(); return;}
   const V={events:viewEvents,eventForm:viewEventForm,event:viewEvent,guide:viewGuide,shop:viewShop,log:viewLog,recipes:viewRecipes,recipe:viewRecipe,recipeForm:viewRecipeForm,galerie:viewGalerie,foto:viewFoto,konto:viewKonto};
   if(!loaded){app.innerHTML=loadErr?'<h1>Pizza App</h1><p class="note">Die Daten konnten nicht geladen werden.</p><p style="margin-top:16px"><button class="btn" data-reload>Nochmals versuchen</button></p>':'<p class="muted">Lädt …</p>'; return;}
@@ -671,7 +709,7 @@ document.addEventListener('keydown',ev=>{
   if(ui.view!=='foto') return;
   if(ev.key==='ArrowRight') lbSchritt(1); else if(ev.key==='ArrowLeft') lbSchritt(-1); else if(ev.key==='Escape') lbZu();
 });
-document.addEventListener('visibilitychange',refresh);
+document.addEventListener('visibilitychange',()=>{wachBleiben(ui.view==='guide'); refresh();});
 if(globalThis.addEventListener) globalThis.addEventListener('online',refresh);
 setInterval(refresh,60000);
-setInterval(()=>{if(ui.view==='guide'&&!document.querySelector('details[open]')) render();},60000);
+setInterval(()=>{if(['guide','event'].includes(ui.view)&&!document.querySelector('details[open]')) render();},60000);
