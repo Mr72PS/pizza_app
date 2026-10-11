@@ -188,3 +188,33 @@ test('App-Dateien werden bei jedem Aufruf nachgeprüft, damit Updates sofort ank
   }
   assert.equal((await app.inject({method: 'GET', url: '/fonts/instrument-sans.woff2'})).headers['cache-control'], 'public, max-age=86400');
 });
+
+test('Abgleich: mit der Marke des geladenen Stands antwortet /api/state mit 304, nach einer Änderung wieder mit Daten', async () => {
+  const erst = await c.call('GET', '/api/state');
+  const etag = erst.headers.etag;
+  assert.match(etag, /^"[0-9a-f]+-\d+"$/);
+  const gleich = await c.call('GET', '/api/state', undefined, {'if-none-match': etag});
+  assert.equal(gleich.status, 304);
+  assert.equal(gleich.body, null);
+  // Ein Proxy, der komprimiert, schickt die Marke als schwache zurück
+  assert.equal((await c.call('GET', '/api/state', undefined, {'if-none-match': 'W/' + etag})).status, 304);
+  await call('PUT', '/api/events/ev1', {data: EVENT});
+  const danach = await c.call('GET', '/api/state', undefined, {'if-none-match': etag});
+  assert.equal(danach.status, 200);
+  assert.notEqual(danach.headers.etag, etag);
+  assert.equal(danach.body.events.length, 1);
+});
+
+test('Abgleich: nach einem Neustart des Servers gilt die alte Marke nicht mehr', async () => {
+  const etag = (await c.call('GET', '/api/state')).headers.etag;
+  await app.close(); await start();
+  assert.equal((await c.call('GET', '/api/state', undefined, {'if-none-match': etag})).status, 200);
+});
+
+test('Version: nur mit Anmeldung, lokal leer, im Image mit Commit und Bauzeit', async () => {
+  assert.equal((await client(app).call('GET', '/api/version')).status, 401);
+  assert.deepEqual((await call('GET', '/api/version')).body, {commit: '', built: ''});
+  await app.close();
+  app = await startApp(dir, {version: {commit: 'abc1234def', built: '2026-10-11T10:00:00Z'}}); c = client(app); await c.login();
+  assert.deepEqual((await call('GET', '/api/version')).body, {commit: 'abc1234def', built: '2026-10-11T10:00:00Z'});
+});

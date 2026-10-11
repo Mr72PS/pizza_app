@@ -24,6 +24,11 @@ COPY server ./server
 COPY public ./public
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN mkdir /data && chown node:node /data
+# Commit und Bauzeit für die Versionsanzeige unter «Konto»; so spät, damit die Schichten davor im Cache bleiben
+ARG APP_COMMIT=""
+ARG APP_BUILT=""
+ENV APP_COMMIT=$APP_COMMIT \
+    APP_BUILT=$APP_BUILT
 # Kein USER: Der Einstieg richtet als root die Rechte auf /data und wechselt dann auf PUID:PGID (Vorgabe 1000:1000)
 VOLUME /data
 EXPOSE 8093

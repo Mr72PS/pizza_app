@@ -11,12 +11,14 @@ let me=null; // angemeldeter Benutzer
 const KINDS=['recipes','events'];
 // Stand auf dem Server: pro Datensatz das zuletzt bestätigte JSON und die Versionsmarke
 let synced={recipes:new Map(), events:new Map()};
-async function api(method,url,body){
-  const res=await fetch(url,{method,headers:body?{'content-type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+async function api(method,url,body,headers={}){
+  const res=await fetch(url,{method,headers:{...(body?{'content-type':'application/json'}:{}),...headers},body:body?JSON.stringify(body):undefined});
   // Sitzung abgelaufen oder widerrufen: zurück zur Anmeldung
   if(res.status===401&&url!=='/api/login'&&me){me=null; loaded=false; ui.msg=''; render();}
-  return {status:res.status, data:res.status===204?null:await res.json().catch(()=>null)};
+  return {status:res.status, etag:res.headers?res.headers.get('etag'):null, data:res.status===204||res.status===304?null:await res.json().catch(()=>null)};
 }
+// Marke des zuletzt geladenen Stands: Der Abgleich schickt sie mit und bekommt 304, solange niemand etwas geändert hat
+let stateTag=null;
 function adopt(s){
   fotoIds={}; for(const f of s.photos||[]) (fotoIds[f.eventId]=fotoIds[f.eventId]||[]).push(f.id);
   fotoSig=JSON.stringify(s.photos||[]);
@@ -24,7 +26,7 @@ function adopt(s){
 }
 async function loadState(){
   const r=await api('GET','/api/state'); if(r.status!==200) throw new Error('state '+r.status);
-  adopt(r.data); loaded=true; loadErr=false;
+  adopt(r.data); stateTag=r.etag; loaded=true; loadErr=false;
 }
 let saving=false, dirty=false, retry=null;
 function save(){dirty=true; pump();}
@@ -69,7 +71,8 @@ async function conflict(msg){
 async function refresh(){
   if(!me||!loaded||saving||dirty||fotoBusy||document.hidden) return;
   try{
-    const r=await api('GET','/api/state'); if(r.status!==200||saving||dirty||fotoBusy) return;
+    const r=await api('GET','/api/state',undefined,stateTag?{'if-none-match':stateTag}:{}); if(r.status!==200||saving||dirty||fotoBusy) return;
+    stateTag=r.etag;
     if(KINDS.every(k=>r.data[k].length===synced[k].size&&r.data[k].every(x=>(synced[k].get(x.id)||{}).ver===x.updatedAt))&&JSON.stringify(r.data.photos||[])===fotoSig) return;
     adopt(r.data);
     if(!['eventForm','recipeForm','log'].includes(ui.view)&&!document.querySelector('details[open]')) render();
@@ -455,7 +458,20 @@ function viewKonto(){
     <label>Passwort<input type="password" name="password" autocomplete="new-password" minlength="8" required><span class="hint">Mindestens 8 Zeichen. Die Person kann es danach selbst ändern.</span></label>
     <label class="check"><input type="checkbox" name="admin">Darf Benutzer verwalten (Admin)</label>
     <button class="btn primary" type="submit">Benutzer anlegen</button>
-  </form>`:''}`;
+  </form>`:''}
+  <p class="small muted" style="margin-top:28px">${esc(versionTxt())}</p>`;
+}
+
+/* Welche Version auf dem Server läuft: Commit und Bauzeit des Images. Damit zeigt sich nach einem Push, ob das neue Image gestartet ist. */
+let version=null;
+function versionTxt(){
+  if(!version) return '';
+  const d=new Date(version.built);
+  if(!version.commit) return 'Version: lokal gestartet, ohne Image.';
+  return `Version ${String(version.commit).slice(0,7)}`+(isNaN(d)?'':`, gebaut am ${dm(d)}${d.getFullYear()} um ${hm(d)} Uhr`)+'.';
+}
+async function loadVersion(){
+  const r=await api('GET','/api/version'); if(r.status===200&&r.data){version=r.data; if(ui.view==='konto') render();}
 }
 
 async function loadUsers(){
@@ -507,7 +523,7 @@ document.addEventListener('click',ev=>{
   if('reload' in d) return location.reload();
   if(!loaded) return;
   if(d.openEvent) return go('event',d.openEvent);
-  if(d.nav==='konto'){ui.msg=''; ui.users=null; loadUsers(); return go('konto');}
+  if(d.nav==='konto'){ui.msg=''; ui.users=null; loadUsers(); loadVersion(); return go('konto');}
   if(d.nav) return go(d.nav,null,{von:null});
   if(d.lbP){if(ui.view!=='foto') ui.lbY=window.scrollY; return go('foto',null,{lb:{e:d.lbE,p:d.lbP,alle:!!d.lbAlle}});}
   if('lbZu' in d) return lbZu();

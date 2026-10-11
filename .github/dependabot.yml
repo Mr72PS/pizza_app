@@ -1,0 +1,18 @@
+# Dependabot schlägt Updates als Pull Requests vor. Der Workflow testet sie; ein Image entsteht erst nach dem Zusammenführen.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Kleine Updates gesammelt in einem Vorschlag, grosse Versionssprünge einzeln
+    groups:
+      klein:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

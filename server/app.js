@@ -48,6 +48,8 @@ export function configFromEnv(env = process.env) {
     sessionSecret: env.SESSION_SECRET,
     baseUrl,
     trustProxy: !tp || tp === 'false' ? false : tp === 'true' ? true : /^\d+$/.test(tp) ? Number(tp) : tp,
+    // Setzt der Workflow beim Bauen des Images; lokal bleiben beide leer
+    version: {commit: env.APP_COMMIT || '', built: env.APP_BUILT || ''},
   };
 }
 
@@ -89,7 +91,22 @@ export async function buildApp({dataDir, logger = false, config = {}} = {}) {
 
   app.get('/healthz', () => ({ok: true}));
 
-  app.get('/api/state', () => ({recipes: recipes.list(), events: events.list(), photos: photos.list()}));
+  app.get('/api/version', () => ({commit: '', built: '', ...config.version}));
+
+  /* Die Marke wächst nach jeder schreibenden Anfrage. Wer beim Abgleich die Marke seines Stands mitschickt, bekommt 304 statt aller Daten.
+     Der Zufallsteil gilt für einen Lauf des Servers, nach einem Neustart laden alle einmal neu. */
+  const lauf = randomBytes(6).toString('hex');
+  let stand = 0;
+  app.addHook('onResponse', async req => { if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) stand++; });
+  // Ein Proxy, der komprimiert, macht aus der Marke eine schwache (W/"…"); verglichen wird ohne diesen Vorsatz
+  const marke = s => String(s || '').replace(/^W\//, '');
+
+  app.get('/api/state', (req, reply) => {
+    const etag = `"${lauf}-${stand}"`;
+    reply.header('etag', etag).header('cache-control', 'private, no-cache');
+    if (marke(req.headers['if-none-match']) === etag) return reply.code(304).send();
+    return {recipes: recipes.list(), events: events.list(), photos: photos.list()};
+  });
 
   const body = data => ({
     type: 'object', required: ['data'], additionalProperties: false,
