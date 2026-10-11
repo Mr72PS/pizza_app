@@ -35,5 +35,4 @@ EXPOSE 8093
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 ENTRYPOINT ["docker-entrypoint.sh"]
-ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "server/index.js"]
