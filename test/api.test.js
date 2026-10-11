@@ -7,6 +7,9 @@ import {startApp, client, tempDir, removeDir, EVENT, REZEPT} from './helper.js';
 import {mergeSeed} from '../server/seed.js';
 import {getMeta} from '../server/db.js';
 import {SEED} from '../public/calc.js';
+import {readFileSync} from 'node:fs';
+
+const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 let dir, app, c;
 // Jeder Start meldet den Admin neu an, wie ein Browser nach einem Neustart des Servers mit gültigem Cookie
@@ -216,8 +219,9 @@ test('Abgleich: nach einem Neustart des Servers gilt die alte Marke nicht mehr',
 
 test('Version: nur mit Anmeldung, lokal leer, im Image mit Commit und Bauzeit', async () => {
   assert.equal((await client(app).call('GET', '/api/version')).status, 401);
-  assert.deepEqual((await call('GET', '/api/version')).body, {commit: '', built: ''});
+  assert.deepEqual((await call('GET', '/api/version')).body, {version: VERSION, commit: '', built: ''});
+  assert.match(VERSION, /^\d+\.\d+\.\d+$/);
   await app.close();
   app = await startApp(dir, {version: {commit: 'abc1234def', built: '2026-10-11T10:00:00Z'}}); c = client(app); await c.login();
-  assert.deepEqual((await call('GET', '/api/version')).body, {commit: 'abc1234def', built: '2026-10-11T10:00:00Z'});
+  assert.deepEqual((await call('GET', '/api/version')).body, {version: VERSION, commit: 'abc1234def', built: '2026-10-11T10:00:00Z'});
 });

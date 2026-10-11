@@ -4,6 +4,7 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyHelmet from '@fastify/helmet';
 import fastifyRateLimit from '@fastify/rate-limit';
 import {randomBytes} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {openDb} from './db.js';
 import {mergeSeed} from './seed.js';
@@ -13,6 +14,7 @@ import {recipeSchema, eventSchema} from './schema.js';
 
 const PUBLIC = fileURLToPath(new URL('../public/', import.meta.url));
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
+const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 /* Rezepte und Events haben dieselbe Form: id, data (JSON), updated_at als Versionsmarke. */
 function store(db, table) {
@@ -91,7 +93,8 @@ export async function buildApp({dataDir, logger = false, config = {}} = {}) {
 
   app.get('/healthz', () => ({ok: true}));
 
-  app.get('/api/version', () => ({commit: '', built: '', ...config.version}));
+  // Die Versionsnummer steht in package.json und wird mit jeder Änderung von Hand erhöht; Commit und Bauzeit kommen aus dem Image
+  app.get('/api/version', () => ({version: VERSION, commit: '', built: '', ...config.version}));
 
   /* Die Marke wächst nach jeder schreibenden Anfrage. Wer beim Abgleich die Marke seines Stands mitschickt, bekommt 304 statt aller Daten.
      Der Zufallsteil gilt für einen Lauf des Servers, nach einem Neustart laden alle einmal neu. */

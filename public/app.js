@@ -528,8 +528,10 @@ let version=null;
 function versionTxt(){
   if(!version) return '';
   const d=new Date(version.built);
-  if(!version.commit) return 'Version: lokal gestartet, ohne Image.';
-  return `Version ${String(version.commit).slice(0,7)}`+(isNaN(d)?'':`, gebaut am ${dm(d)}${d.getFullYear()} um ${hm(d)} Uhr`)+'.';
+  // «1.2.0» wird zu «V1.2», die dritte Stelle erscheint nur bei Korrekturen («V1.2.1»)
+  const nr='V'+String(version.version||'?').replace(/\.0$/,'');
+  if(!version.commit) return `${nr}, lokal gestartet, ohne Image.`;
+  return nr+(isNaN(d)?'':`, gebaut am ${dm(d)}${d.getFullYear()} um ${hm(d)} Uhr`)+` (${String(version.commit).slice(0,7)}).`;
 }
 async function loadVersion(){
   const r=await api('GET','/api/version'); if(r.status===200&&r.data){version=r.data; if(ui.view==='konto') render();}
