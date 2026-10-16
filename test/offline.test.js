@@ -44,8 +44,8 @@ test('Start ohne Server: der gemerkte Stand erscheint mit Hinweis und Zeitpunkt'
   assert.match(html, /Abend ohne Netz/);
 });
 
-test('offline lassen sich Zeitplan, Anleitung, Einkaufsliste und Rezept öffnen', () => {
-  for (const [dataset, text] of [[{openEvent: 'ev1'}, 'Zeitplan'], [{guide: 'ev1'}, 'Schritt'], [{shop: 'ev1'}, 'Einkaufsliste'], [{openRecipe: 'napo'}, 'Napoletana']]) {
+test('offline lassen sich Fahrplan, Küchenmodus, Einkaufsliste und Rezept öffnen', () => {
+  for (const [dataset, text] of [[{openEvent: 'ev1'}, 'Fahrplan'], [{guide: 'ev1'}, 'Schritt'], [{shop: 'ev1'}, 'Einkaufsliste'], [{openRecipe: 'napo'}, 'Napoletana']]) {
     html = ''; klick(dataset);
     assert.ok(html.includes(text), JSON.stringify(dataset));
     assert.match(html, /^<p class="note"[^>]*>Offline:/);

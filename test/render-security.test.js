@@ -117,7 +117,7 @@ test('6h: Grossansicht blättert durch die Galerie oder durch die Fotos eines Ev
   klick({zumEvent: 'e0'});
   assert.ok(html.includes('data-nav="galerie">‹ Galerie'), 'vom Event zurück in die Galerie');
   klick({nav: 'events'}); klick({openEvent: 'e0'});
-  assert.ok(html.includes('data-nav="events">‹ Events'), 'sonst zurück zu den Events');
+  assert.ok(html.includes('data-nav="events">‹ Heute'), 'sonst zurück zu «Heute»');
 
   klick({lbE: 'e0', lbP: 'f2'});
   assert.ok(html.includes('2 / 2'), 'aus dem Event nur dessen Fotos');
@@ -159,5 +159,5 @@ test('6k: ein Event mit unbekannter Teigführung lässt sich öffnen, es gilt di
     assert.ok(html.length > 200, JSON.stringify(ansicht) + ' zeigt etwas an');
   }
   klick({openEvent: 'ek'});
-  assert.ok(html.includes('Zeitplan') && html.includes('data-toggle='), 'mit Zeitplan');
+  assert.ok(html.includes('Fahrplan') && html.includes('data-toggle='), 'mit Fahrplan');
 });

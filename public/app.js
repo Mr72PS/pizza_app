@@ -194,21 +194,54 @@ function amountsTable(p,r){
   return h;
 }
 
+/* Kleine Strich-Icons für Knöpfe */
+const ICON={
+  plus:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  minus:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>',
+};
+// «Heute, Freitag», «Morgen, Samstag» oder «Donnerstag 22.10.»
+function tagLbl(t){
+  const h=new Date(), m=new Date(h.getTime()+864e5);
+  return dayKey(t)===dayKey(h)?'Heute, '+TAGE_LANG[t.getDay()]:dayKey(t)===dayKey(m)?'Morgen, '+TAGE_LANG[t.getDay()]:TAGE_LANG[t.getDay()]+' '+dm(t);
+}
 function viewEvents(){
   const now=Date.now();
   const evs=[...state.events].sort((a,b)=>new Date(a.essen)-new Date(b.essen));
   const kommend=evs.filter(e=>new Date(e.essen).getTime()+4*3600e3>=now), vorbei=evs.filter(e=>!kommend.includes(e)).reverse();
+  // Aufmacher: der nächste offene Schritt über alle geplanten Events
+  let held=null;
+  for(const e of kommend){
+    const r=recipe(e.recipeId); if(!r) continue;
+    try{const R=eff(r,e), p=plan(R,e), ni=nextIdx(e,p); if(ni>=0&&(!held||p.steps[ni].t<held.s.t)) held={e,R,p,ni,s:p.steps[ni]};}catch(x){}
+  }
   // Bild der Karte: das erste Foto aus dem Backprotokoll, sonst das App-Symbol
   const bild=e=>{const f=fotosOf(e.id)[0]; return `<img class="bild" src="${esc(f?fotoKlein(e.id,f):IMG_PLATZ)}" alt="" loading="lazy">`;};
-  const start=(e,r)=>{try{const t=plan(eff(r,e),e).steps[0].t; return ` · Start ${TAGE[t.getDay()]} ${hm(t)}`;}catch(x){return '';}};
+  const start=(e,r)=>{try{const t=plan(eff(r,e),e).steps[0].t; return `, Start ${TAGE[t.getDay()]} ${hm(t)}`;}catch(x){return '';}};
   const li=(e,offen)=>{const d=new Date(e.essen), r=recipe(e.recipeId);
     return `<li class="hasdel"><button class="kachel" data-open-event="${e.id}">${bild(e)}<span class="txt"><span class="when"><span>${d.getFullYear()}</span>${TAGE[d.getDay()]} ${dm(d)}<span>${hm(d)} Uhr</span></span><span class="t">${esc(e.name||'Pizza-Abend')}</span><span class="small muted">${esc(e.anzahl)} × ${esc(r?r.name:'Rezept gelöscht')}${r&&KURZ[e.methode]&&e.methode!==r.methode?', '+KURZ[e.methode].toLowerCase():''}${offen&&r?start(e,r):''} ${fotoStern(e)}</span></span></button><button class="del" data-del-event="${e.id}" aria-label="${esc(e.name||'Pizza-Abend')} löschen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button></li>`;};
-  return `<div class="kopfzeile"><span class="src mein"><img src="${IMG_KOPF}" alt=""></span><h1>Pizza App</h1></div>
-  ${evs.length?'':'<p class="muted">Sag, wann die Pizza auf dem Teller sein soll. Die App rechnet zurück, wann du mit dem Teig anfangen musst.</p>'}
-  <p style="margin:0"><button class="btn primary breit" data-new-event>Event planen</button></p>
-  <h2>Geplant</h2>
-  ${kommend.length?`<ul class="kacheln">${kommend.map(e=>li(e,true)).join('')}</ul>`:'<p class="empty">Noch kein Event geplant.</p>'}
-  ${vorbei.length?`<h2>Gebacken</h2><ul class="kacheln">${vorbei.map(e=>li(e,false)).join('')}</ul>`:''}`;
+  let h=`<header class="kopf"><span class="src mein"><img src="${IMG_KOPF}" alt=""></span><span class="name">Pizza App</span><button class="neu" data-new-event>${ICON.plus}Event</button></header>`;
+  if(held){
+    const {e,R,p,ni,s}=held, E=p.E;
+    h+=`<button class="aufmacher" data-open-event="${e.id}">
+      <span class="dach"><span>${tagLbl(s.t)}</span><span>${bis(s)}</span></span>
+      <span class="riesig">${hm(s.t)}</span>
+      <span class="was">${esc(s.ttl)}</span>
+      <span class="fuer">für <strong>${esc(e.name||'Pizza-Abend')}</strong>, ${TAGE[E.getDay()]} ${dm(E)} um ${hm(E)}</span>
+      ${gaerkurve(p,R,{h:40,mini:true})}</button>
+    <h2>Fahrplan</h2><ol class="fahrplan">${p.steps.slice(ni,ni+3).map(x=>`<li><time>${hm(x.t)}</time><span><b>${esc(x.ttl)}</b><small>${dayKey(x.t)===dayKey(new Date())?'':TAGE[x.t.getDay()]+' '+dm(x.t)+', '}${x.k==='backen'?'bis ca. '+hm(p.letzte):span(x.min)}</small></span></li>`).join('')}</ol>`;
+  } else {
+    h+=`<p class="muted" style="margin-top:24px">Sag, wann die Pizza auf dem Teller sein soll. Die App rechnet zurück, wann du mit dem Teig anfangen musst.</p>
+    <p style="margin-top:16px"><button class="btn primary breit" data-new-event>Event planen</button></p>`;
+  }
+  const weitere=kommend.filter(e=>!held||e!==held.e);
+  if(weitere.length) h+=`<h2>Geplant</h2><ul class="kacheln">${weitere.map(e=>li(e,true)).join('')}</ul>`;
+  else if(!kommend.length&&evs.length) h+=`<p class="empty">Noch kein Event geplant.</p>`;
+  if(vorbei.length){
+    h+=`<div class="h2zeile"><h2>Gebacken</h2>${vorbei.length>3?`<button class="link" data-alle-gebacken>${ui.alle?'weniger':'alle '+vorbei.length}</button>`:''}</div>`;
+    h+=ui.alle?`<ul class="kacheln">${vorbei.map(e=>li(e,false)).join('')}</ul>`
+      :`<ul class="streifen">${vorbei.slice(0,3).map(e=>{const d=new Date(e.essen); return `<li><button data-open-event="${e.id}">${bild(e)}<b>${esc(e.name||'Pizza-Abend')}</b><small>${TAGE[d.getDay()]} ${dm(d)} ${fotoStern(e)}</small></button></li>`;}).join('')}</ul>`;
+  }
+  return h;
 }
 
 // Alle Fotos aus den Backprotokollen, das neueste Event zuerst
@@ -289,18 +322,62 @@ function viewEventForm(){
 
 
 function nextIdx(e,p){return p.steps.findIndex(s=>!(e.done||{})[s.k]);}
-// Wie lange es bis zu einem Schritt noch dauert; leer, wenn er schon vorbei ist
+// Wie lange es bis zu einem Schritt noch dauert, oder wie lange er schon fällig ist
 function bis(s){
   const diff=(s.t-new Date())/60000;
-  return diff>=2880?'in '+Math.floor(diff/1440)+' Tagen':diff>1?'in '+span(diff):diff>-s.min?'jetzt':'';
+  return diff>=2880?'in '+Math.floor(diff/1440)+' Tagen':diff>1?'in '+span(diff):diff>-s.min?'jetzt':'fällig seit '+(diff<=-2880?Math.floor(-diff/1440)+' Tagen':span(-diff));
 }
-/* Die rote Karte zeigt den nächsten offenen Schritt, den Fortschritt und die Zeit bis dahin. */
-function startKarte(p,ni){
-  const n=p.steps.length;
-  if(ni<0) return `<div class="start"><div class="lbl">Alle ${n} Schritte erledigt</div><div class="big">Fertig</div><div class="what">Guten Appetit</div><div class="bar"><i style="width:100%"></i></div></div>`;
-  const s=p.steps[ni];
-  return `<div class="start"><div class="lbl">${ni?'Nächster Schritt':'Starte'} am ${TAGE_LANG[s.t.getDay()]}, ${dm(s.t)} um</div><div class="big">${hm(s.t)}</div><div class="what">${esc(s.ttl)}</div>
-    <div class="fort"><span>Schritt ${ni+1} von ${n}</span><span>${bis(s)}</span></div><div class="bar"><i style="width:${ni/n*100}%"></i></div></div>`;
+/* Gärkurve: wann der Teig warm steht und wann er im Kühlschrank liegt, vom ersten Schritt bis zum Ofen.
+   Reine Anzeige aus den Schritten des Plans; die Rechenlogik bleibt unberührt. */
+const IST_KALT=(s,R)=>s.k==='kuehl'||s.k==='park'||(R.methode==='kuehl'&&!R.ballNachKuehl&&(s.k==='ballen'||(s.k==='stock'&&!!R.stockKuehlH)));
+// Eine kalt geführte Biga steht zuerst rund 3 Stunden warm, bevor sie in den Kühlschrank kommt
+const BIGA_WARM_MS=3*36e5;
+function gaerPhasen(p,R){
+  const seg=[], add=(t0,t1,kalt)=>{if(t1<=t0) return; const l=seg[seg.length-1]; if(l&&l.kalt===kalt&&Math.abs(l.t1-t0)<6e4) l.t1=t1; else seg.push({t0,t1,kalt});};
+  for(const st of p.steps){
+    if(st.k==='ofen'||st.k==='backen') continue;
+    const t0=+st.t, t1=t0+st.min*6e4;
+    if(st.k==='vorteig'&&R.methode==='biga'&&R.bigaKalt){const w=Math.min(BIGA_WARM_MS,t1-t0); add(t0,t0+w,false); add(t0+w,t1,true);}
+    else add(t0,t1,IST_KALT(st,R));
+  }
+  return seg;
+}
+function gaerkurve(p,R,{w=342,h=128,mini=false}={}){
+  const seg=gaerPhasen(p,R); if(!seg.length) return '';
+  const a=seg[0].t0, b=Math.max(+p.B,seg[seg.length-1].t1), x=t=>(t-a)/(b-a)*w, f=n=>n.toFixed(1);
+  const top=mini?2:22, base=h-(mini?2:22), yW=top+(base-top)*.05, yK=top+(base-top)*.72;
+  let fl='', li=`M0 ${f(base)}`, tx='';
+  for(const sg of seg){
+    const x0=x(sg.t0), x1=x(sg.t1), y=sg.kalt?yK:yW;
+    fl+=`<rect x="${f(x0)}" y="${f(y)}" width="${f(x1-x0)}" height="${f(base-y)}" class="${sg.kalt?'k-kalt':'k-warm'}"/>`;
+    li+=` L${f(x0)} ${f(y)} L${f(x1)} ${f(y)}`;
+    if(!mini&&sg.kalt&&x1-x0>=64) tx+=`<text x="${f((x0+x1)/2)}" y="${f(yK+(base-yK)/2+4)}" text-anchor="middle" class="k-lbl">${Math.round((sg.t1-sg.t0)/36e5)} h kalt</text>`;
+  }
+  li+=` L${w} ${f(base)}`;
+  let tg='';
+  if(!mini){
+    const d=new Date(a); let lx=-99;
+    for(let t=a;t<b;){
+      const xx=x(t);
+      if(t>a) tg+=`<line x1="${f(xx)}" x2="${f(xx)}" y1="${top-6}" y2="${f(base+6)}" class="k-tag"/>`;
+      if(xx-lx>=24&&w-xx>=84){tg+=`<text x="${f(t>a?xx+4:0)}" y="${h-4}" class="k-tagtxt">${TAGE[new Date(t).getDay()]}</text>`; lx=xx;}
+      d.setHours(24,0,0,0); t=d.getTime();
+    }
+    tg+=`<text x="${w}" y="${h-4}" text-anchor="end" class="k-tagtxt">Ofen ${hm(p.B)}</text>`;
+  }
+  let mk='';
+  const now=Date.now();
+  if(now>=a&&now<=b){
+    const xx=x(now), sg=seg.find(z=>now>=z.t0&&now<z.t1), y=sg&&sg.kalt?yK:yW;
+    mk=`<line x1="${f(xx)}" x2="${f(xx)}" y1="${mini?0:4}" y2="${f(base)}" class="k-jetzt"/><circle cx="${f(xx)}" cy="${f(y)}" r="${mini?3.5:5}" class="k-punkt"/>`+(mini?'':`<text x="${f(xx+7)}" y="13" class="k-jetzttxt"${w-xx<40?' text-anchor="end" dx="-14"':''}>jetzt</text>`);
+  }
+  return `<svg class="kurve" viewBox="0 0 ${w} ${h}" role="img" aria-label="Gärkurve: wann der Teig bei Raumtemperatur steht und wann im Kühlschrank liegt">${fl}<path d="${li}" class="k-linie"/>${tx}${tg}${mk}</svg>`;
+}
+// Der nächste offene Schritt, gross und rot
+function naechster(p,ni){
+  if(ni<0) return `<div class="naechster"><time>Fertig</time><div><b>Alle ${p.steps.length} Schritte erledigt</b><small>Guten Appetit</small></div></div>`;
+  const s=p.steps[ni], w=bis(s);
+  return `<div class="naechster"><time>${hm(s.t)}</time><div><b>${esc(s.ttl)}</b><small>${dayKey(s.t)===dayKey(new Date())?'':tagLbl(s.t)+', '}Schritt ${ni+1} von ${p.steps.length}${w?', '+w:''}</small></div></div>`;
 }
 
 function viewEvent(){
@@ -315,16 +392,16 @@ function viewEvent(){
       <button class="dot" data-toggle="${s.k}" aria-label="${esc(s.ttl)} ${done[s.k]?'als offen markieren':'als erledigt markieren'}"></button>
       <details class="body"><summary><span class="ttl">${esc(s.ttl)}</span><span class="dur">${s.k==='backen'?'bis ca. '+hm(p.letzte):'dauert '+span(s.min)} · Details</span></summary><ul>${s.d.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details></li>`;
   });
-  return `${ui.von==='galerie'?'<button class="back" data-nav="galerie">‹ Galerie</button>':'<button class="back" data-nav="events">‹ Events</button>'}
-  <h1 style="font-size:2rem">${esc(e.name||'Pizza-Abend')}</h1>
-  <p class="muted">${esc(p.n)} × ${esc(r.name)}${R!==r?' ('+(KURZ[R.methode]||'').toLowerCase()+')':''}, essen am ${TAGE_LANG[p.E.getDay()]}, ${dm(p.E)} um ${hm(p.E)} Uhr</p>
-  ${startKarte(p,ni)}
+  return `${ui.von==='galerie'?'<button class="back" data-nav="galerie">‹ Galerie</button>':'<button class="back" data-nav="events">‹ Heute</button>'}
+  <h1 class="titel">${esc(e.name||'Pizza-Abend')}</h1>
+  <p class="muted">${esc(p.n)} × ${esc(r.name)}${R!==r?' ('+(KURZ[R.methode]||'').toLowerCase()+')':''}, essen am ${TAGE_LANG[p.E.getDay()]} ${dm(p.E)} um ${hm(p.E)} Uhr</p>
+  <figure class="gaerkurve">${gaerkurve(p,R)}<figcaption><span class="leg warm"></span>Raumtemperatur <span class="leg kalt"></span>Kühlschrank</figcaption></figure>
+  ${naechster(p,ni)}
   ${p.warn.map(w=>`<p class="note">${esc(w)}</p>`).join('')}
   ${sug.length?`<div class="sug"><h3>${p.nacht?'Vorschläge, damit alles tagsüber liegt':'Vorschläge, die zeitlich noch reichen'}</h3>${sug.map(c=>`<button class="sugb" data-apply="${c.D}|${c.P}"><strong>Start ${TAGE[c.t.getDay()]} ${dm(c.t)} um ${hm(c.t)}</strong><span>${esc(c.txt)}. Antippen zum Übernehmen.</span></button>`).join('')}</div>`:((p.nacht||p.past)?'<p class="small muted" style="margin-top:8px">Für dieses Rezept findet die App keine passende Variante. Wähle einen späteren Termin oder ein anderes Rezept.</p>':'')}
-  <div class="row" style="margin-top:14px"><button class="btn gruen grow" data-guide="${e.id}">${ni>0?'Küchenmodus fortsetzen':'Küchenmodus starten'}</button></div>
-  <div class="row" style="margin-top:10px"><button class="btn grow" data-shop="${e.id}">Einkaufsliste</button><button class="btn grow" data-edit-event="${e.id}">Ändern</button></div>
-  <div class="row" style="margin-top:10px"><button class="btn grow" data-again="${e.id}">Nochmals so</button></div>
-  <h2>Zeitplan</h2><p class="small muted">${esc(p.info)}. Tippe auf einen Schritt für die Details, auf den Punkt zum Abhaken.</p>
+  <button class="btn primary breit haupt" data-guide="${e.id}">Küchenmodus</button>
+  <div class="row drei"><button class="btn quiet" data-shop="${e.id}">Einkaufsliste</button><button class="btn quiet" data-edit-event="${e.id}">Ändern</button><button class="btn quiet" data-again="${e.id}">Nochmals so</button></div>
+  <h2>Fahrplan</h2><p class="small muted">${esc(p.info)}. Tippe auf einen Schritt für die Details, auf den Punkt zum Abhaken.</p>
   <ol class="tl">${tl}</ol>
   <h2>Zutaten</h2>${amountsTable(p,R)}
   <h2>Ofen</h2><p>Oben ${esc(r.oben)} °C, unten ${esc(r.unten)} °C, ${esc(r.backMin)}–${esc(r.backMax)} min pro Pizza. Das sind Startwerte: nach der ersten Pizza nachstellen.</p>
@@ -394,21 +471,21 @@ function viewLog(){
 const MIT_ZUTATEN=['vorteig','kneten','aktiv','autolyse'];
 function viewGuide(){
   const e=state.events.find(x=>x.id===ui.id), r=e&&recipe(e.recipeId); if(!e||!r) return viewEvents();
-  const p=plan(eff(r,e),e), i=Math.min(Math.max(ui.step,0),p.steps.length-1), s=p.steps[i], last=i===p.steps.length-1;
+  const p=plan(eff(r,e),e), n=p.steps.length, i=Math.min(Math.max(ui.step,0),n-1), s=p.steps[i], last=i===n-1;
   const wann=bis(s), zut=MIT_ZUTATEN.includes(s.k);
-  // Die erste Zeile dieser Schritte zählt die Zutaten auf: jede auf eine eigene Zeile, Kommas in Klammern bleiben
-  const zutaten=zut?String(s.d[0]).replace(/\.$/,'').split(/, (?![^(]*\))/).map(esc).join('<br>'):'';
+  // Die erste Zeile dieser Schritte zählt die Zutaten auf: eine Zeile pro Zutat, Menge rechts. Kommas in Klammern bleiben.
+  const zutaten=zut?String(s.d[0]).replace(/\.$/,'').split(/, (?![^(]*\))/).map(z=>{const m=z.match(/^([\d.]+ (?:g|ml))\s+(.+)$/); const nm=m?m[2]:z; return `<tr><td>${esc(nm.charAt(0).toUpperCase()+nm.slice(1))}</td><td>${esc(m?m[1]:'')}</td></tr>`;}).join(''):'';
+  const tag=dayKey(s.t)===dayKey(new Date())?'':tagLbl(s.t);
   return `<div class="kueche">
-  <div class="oben"><span>Schritt ${i+1} von ${p.steps.length}</span><span>${wach?'Bildschirm bleibt an':''}</span></div>
-  <div class="bar"><i style="width:${(i+1)/p.steps.length*100}%"></i></div>
-  <div class="time">${hm(s.t)}</div>
-  <h2>${esc(s.ttl)}</h2>
-  <p class="muted">${TAGE_LANG[s.t.getDay()]}, ${dm(s.t)}${wann?' · '+wann:''}${s.k==='backen'?'':' · dauert '+span(s.min)}</p>
-  ${zut?`<div class="zutat">${zutaten}</div>`:''}
-  <ul>${s.d.slice(zut?1:0).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
-  ${last?'':`<p class="muted">Danach «${esc(p.steps[i+1].ttl)}» um ${hm(p.steps[i+1].t)}.</p>`}
-  <div class="fuss"><button class="btn gross" data-done="${s.k}" data-step="${last?-1:i+1}">${last?'Fertig, guten Appetit':'Erledigt, weiter'}</button>
-    <div class="row">${i>0?`<button class="btn quiet grow" data-step="${i-1}">‹ Zurück</button>`:''}<button class="btn quiet grow" data-open-event="${e.id}">Zum Zeitplan</button></div></div></div>`;
+  <div class="k-oben"><button class="k-link" data-open-event="${e.id}">‹ Fahrplan</button><span class="seg" role="img" aria-label="Schritt ${i+1} von ${n}">${p.steps.map((x,j)=>`<i class="${j<i?'voll':j===i?'an':''}"></i>`).join('')}</span><span>${i+1} / ${n}</span></div>
+  <p class="k-bis">${[tag,wann].filter(Boolean).join(', ')||'&nbsp;'}</p>
+  <p class="k-zeit">${hm(s.t)}</p>
+  <h1 class="k-titel">${esc(s.ttl)}</h1>
+  ${zut?`<table class="k-zutaten">${zutaten}</table>`:''}
+  <ol class="k-anleitung">${s.d.slice(zut?1:0).map(x=>`<li>${esc(x)}</li>`).join('')}</ol>
+  <p class="k-danach">${s.k==='backen'?'':'Dauert '+span(s.min)+'. '}${last?'':`Danach: ${esc(p.steps[i+1].ttl)} um ${hm(p.steps[i+1].t)}.`}${wach?' Der Bildschirm bleibt an.':''}</p>
+  <div class="k-fuss"><button class="k-knopf" data-done="${s.k}" data-step="${last?-1:i+1}">${last?'Fertig, guten Appetit':'Erledigt, weiter'}</button>
+    ${i>0?`<button class="k-link" data-step="${i-1}">‹ Schritt zurück</button>`:''}</div></div>`;
 }
 let wach=null, wachLaeuft=false;
 async function wachBleiben(an){
@@ -431,26 +508,41 @@ function viewRecipes(){
   ${groups}`;
 }
 
+// Prozentwerte ohne überflüssige Nullen: 68, 2.95, 0.3
+const pz=x=>String(Math.round(Number(x)*100)/100);
+/* Bäckerprozente und Gramm in einer Tabelle, dazu die Aufteilung auf Vorteig und Backtag */
+function prozentTabelle(p,r){
+  const m=p.m, ml=mehlOf(r), gr=x=>g(x,x<10?1:0);
+  const z=(n,pct,x)=>`<tr><td>${n}</td><td>${pct}</td><td>${gr(x)}</td></tr>`;
+  let h='<table class="prozente"><thead><tr><th>Zutat</th><th>%</th><th>Gramm</th></tr></thead><tbody>'
+    +z('Mehl','100',m.mehl)+ml.mix.map(k=>`<tr class="sub"><td>davon ${esc(k.n)}</td><td>${pz(k.p)}</td><td>${g(m.mehl*k.p/100)}</td></tr>`).join('')
+    +z('Wasser',pz(r.hyd),m.wasser)+z('Salz',pz(r.salz),m.salz);
+  if(m.oel) h+=z('Olivenöl',pz(r.oel),m.oel);
+  if(m.zucker) h+=z('Zucker',pz(r.zucker),m.zucker);
+  m.zusatz.forEach((x,i)=>h+=z(esc(x[0].charAt(0).toUpperCase()+x[0].slice(1)),pz(r.zusatz[i][1]),x[1]));
+  h+=z(hefeName(r),pz(m.hefePct),m.hefe)+`</tbody><tfoot><tr><td>Teig</td><td></td><td>${g(m.total)}</td></tr></tfoot></table>`;
+  const pf=p.pf;
+  if(pf) h+=`<p class="split"><b>${pf.nm}:</b> ${g(pf.mehl)} g Mehl, ${g(pf.wasser)} g Wasser, ${gr(pf.hefe)} g Hefe. <b>${pf.anteil>=1?'Am Backtag':'Hauptteig'}:</b> ${pf.hMehl>0.5?g(pf.hMehl)+' g Mehl, ':''}${g(pf.hWasser)} g Wasser, ${g(m.salz)} g Salz${pf.hHefe>0.005?', '+gr(pf.hHefe)+' g Hefe':''}.</p>`;
+  if(ml.text) h+=`<p class="small muted"><strong>Mehl:</strong> ${esc(ml.mix.map(k=>pz(k.p)+' % '+k.n).concat(ml.notes).join(', '))}.</p>`;
+  return h;
+}
 function viewRecipe(){
   const r=recipe(ui.id); if(!r) return viewRecipes();
   const rr=eff(r,{methode:ui.calcM}), p=plan(rr,{anzahl:ui.calcN,raumtemp:21});
   const logs=state.events.filter(e=>e.recipeId===r.id&&e.log).sort((a,b)=>new Date(b.essen)-new Date(a.essen));
-  const row=(a,b)=>`<tr><td>${a}</td><td>${b}</td></tr>`;
   return `<button class="back" data-nav="recipes">‹ Rezepte</button>
-  <div class="titlerow"><h1 style="font-size:2rem">${esc(r.name)}</h1>${src(r)==='mein'?`<img class="seal" src="${IMG_SIEGEL}" alt="Siegel Pizzeria Pizzaiolo Patricio">`:''}</div>
-  <p class="srcline">${srcIcon(r)}<span>${QUELLEN[src(r)].name}${srcUrl(r)?` · <a href="${esc(srcUrl(r))}" target="_blank" rel="noopener noreferrer">Quelle öffnen</a>`:''}</span></p>
-  <p class="muted" style="margin-top:10px">${meth(rr.methode).name}, ${meth(rr.methode).dauerLbl} ${g(rr.dauer)} h</p>
-  ${r.notiz?`<p>${esc(r.notiz)}</p>`:''}
-  <div class="row" style="margin-top:14px"><button class="btn primary grow" data-new-event="${r.id}">Event damit planen</button><button class="btn" data-edit-recipe="${r.id}">Bearbeiten</button></div>
-  <h2>Zutaten</h2>
-  <label style="margin-bottom:14px">Teigführung<select id="calcM">${methodeOptions(r,ui.calcM)}</select></label>
-  <div class="row" style="justify-content:space-between;margin-bottom:10px"><span>Pizzen</span><span class="stepper"><button data-calc="-1" aria-label="Eine Pizza weniger">−</button><output>${ui.calcN}</output><button data-calc="1" aria-label="Eine Pizza mehr">+</button></span></div>
-  ${amountsTable(p,rr)}
-  <h2>Teig</h2><table class="amounts">${row('Teigling',g(r.ballen)+' g')}${row('Wasser',g(r.hyd,1)+' %')}${row('Salz',g(r.salz,1)+' %')}${row('Olivenöl',g(r.oel,1)+' %')}${row('Zucker',g(r.zucker,1)+' %')}${rr.methode==='poolish'||rr.methode==='biga'?row('Mehl im Vorteig',g(rr.anteil||40)+' %'):''}</table>
-  <h2>Ablauf</h2><ol style="padding-left:20px">${p.steps.map(s=>`<li style="margin-bottom:8px"><strong>${esc(s.ttl)}</strong>${s.k==='backen'?'':' ('+span(s.min)+')'}<br><span class="muted small">${esc(s.d[s.k==='kneten'||s.k==='vorteig'?1:0])}</span></li>`).join('')}</ol>
+  <div class="titlerow"><h1 class="titel">${esc(r.name)}</h1>${src(r)==='mein'?`<img class="seal" src="${IMG_SIEGEL}" alt="Siegel Pizzeria Pizzaiolo Patricio">`:''}</div>
+  <p class="srcline">${srcIcon(r)}<span>${QUELLEN[src(r)].name}${srcUrl(r)?`, <a href="${esc(srcUrl(r))}" target="_blank" rel="noopener noreferrer">Quelle öffnen</a>`:''}</span></p>
+  <div class="hydra"><span class="zahl">${esc(pz(r.hyd))}</span><span class="einheit">%</span><span class="was">Wasser auf das Mehl<small>${p.pf?`${p.pf.nm} ${pz(p.pf.isP?100:(rr.bigaHyd||45))} %, ${p.pf.anteil>=1?'am Backtag':'im Hauptteig'} ${g(p.pf.hWasser)} g dazu`:`${meth(rr.methode).name}, ${g(rr.dauer)} h`}</small></span></div>
+  <div class="menge"><span>Für</span><button data-calc="-1" aria-label="Eine Pizza weniger">${ICON.minus}</button><b>${ui.calcN}</b><button data-calc="1" aria-label="Eine Pizza mehr">${ICON.plus}</button><span>Teiglinge à ${g(r.ballen)} g</span></div>
+  ${prozentTabelle(p,rr)}
+  <label class="fuehrung">Teigführung<select id="calcM">${methodeOptions(r,ui.calcM)}</select></label>
+  <button class="btn primary breit haupt" data-new-event="${r.id}">Event damit planen</button>
+  <h2>Ablauf</h2>${gaerkurve(p,rr,{h:104})}<ol style="padding-left:20px">${p.steps.map(s=>`<li style="margin-bottom:8px"><strong>${esc(s.ttl)}</strong>${s.k==='backen'?'':' ('+span(s.min)+')'}<br><span class="muted small">${esc(s.d[s.k==='kneten'||s.k==='vorteig'?1:0])}</span></li>`).join('')}</ol>
   <h2>Formen und Backen</h2><p>${esc(r.formen)}</p><p>Oben ${esc(r.oben)} °C, unten ${esc(r.unten)} °C, ${esc(r.backMin)}–${esc(r.backMax)} min pro Pizza.</p>
+  ${r.notiz?`<h2>Notiz</h2><p>${esc(r.notiz)}</p>`:''}
   ${logs.length?`<h2>Backprotokolle</h2><ul class="list">${logs.map(e=>{const d=new Date(e.essen); return `<li><button class="item" data-open-event="${e.id}"><span class="when">${dm(d)}<span>${d.getFullYear()}</span></span><span>${sterne(e.log.sterne)}<br><span class="small muted">${esc(e.log.aendern||e.log.gut||e.name||'')}</span></span><span class="chev" aria-hidden="true">›</span></button></li>`;}).join('')}</ul>`:''}
-  <p style="margin-top:28px"><button class="btn danger" data-del-recipe="${r.id}">Rezept löschen</button></p>`;
+  <div class="row" style="margin-top:28px"><button class="btn quiet" data-edit-recipe="${r.id}">Bearbeiten</button><button class="btn danger" data-del-recipe="${r.id}">Rezept löschen</button></div>`;
 }
 
 function viewRecipeForm(){
@@ -575,6 +667,7 @@ async function start(){
 function render(){
   document.querySelector('nav').hidden=!me||(loaded&&ui.view==='guide');
   wachBleiben(!!me&&loaded&&ui.view==='guide');
+  if(document.body) document.body.classList.toggle('ofen',!!me&&loaded&&ui.view==='guide');
   if(!me&&!loadErr){app.innerHTML=viewLogin(); return;}
   const V={events:viewEvents,eventForm:viewEventForm,event:viewEvent,guide:viewGuide,shop:viewShop,log:viewLog,recipes:viewRecipes,recipe:viewRecipe,recipeForm:viewRecipeForm,galerie:viewGalerie,foto:viewFoto,konto:viewKonto};
   if(!loaded){app.innerHTML=loadErr?'<h1>Pizza App</h1><p class="note">Die Daten konnten nicht geladen werden.</p><p style="margin-top:16px"><button class="btn" data-reload>Nochmals versuchen</button></p>':'<p class="muted">Lädt …</p>'; return;}
@@ -599,6 +692,7 @@ document.addEventListener('click',ev=>{
     if(SCHREIBT.some(k=>k in d)) return alert(NUR_LESEN);
     if(d.nav==='konto'){ui.msg=''; return go('konto');}
   }
+  if('alleGebacken' in d){ui.alle=!ui.alle; return render();}
   if(d.openEvent) return go('event',d.openEvent);
   if(d.nav==='konto'){ui.msg=''; ui.users=null; loadUsers(); loadVersion(); return go('konto');}
   if(d.nav) return go(d.nav,null,{von:null});
