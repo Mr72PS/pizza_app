@@ -221,7 +221,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ink);outline:none}
 /* Event: Gärkurve und nächster Schritt */
 .titel{font-size:2rem;line-height:1.02;letter-spacing:-.02em;margin:8px 0 8px}
 .gaerkurve{margin:24px 0 0}
-.gaerkurve figcaption{display:flex;align-items:center;gap:8px;font-size:.75rem;color:var(--muted);margin-top:4px}
+.gaerkurve figcaption{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:.75rem;color:var(--muted);margin-top:4px}
 .leg{width:10px;height:10px;border-radius:2px;display:inline-block}
 .leg.warm{background:var(--kruste)}.leg.kalt{background:var(--frigo);margin-left:12px}
 .kurve{display:block;width:100%;height:auto;overflow:visible}

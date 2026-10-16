@@ -373,6 +373,8 @@ function gaerkurve(p,R,{w=342,h=128,mini=false}={}){
   }
   return `<svg class="kurve" viewBox="0 0 ${w} ${h}" role="img" aria-label="Gärkurve: wann der Teig bei Raumtemperatur steht und wann im Kühlschrank liegt">${fl}<path d="${li}" class="k-linie"/>${tx}${tg}${mk}</svg>`;
 }
+// Legende der Gärkurve. Die Raumtemperatur kommt aus dem Event, den Kühlschrank kennt die App nicht: 5 °C ist ein Richtwert.
+const legende=raum=>`<figcaption><span class="leg warm"></span>Raumtemperatur (ca. ${esc(Number(raum)||21)} °C) <span class="leg kalt"></span>Kühlschrank (ca. 5 °C)</figcaption>`;
 // Der nächste offene Schritt, gross und rot
 function naechster(p,ni){
   if(ni<0) return `<div class="naechster"><time>Fertig</time><div><b>Alle ${p.steps.length} Schritte erledigt</b><small>Guten Appetit</small></div></div>`;
@@ -395,7 +397,7 @@ function viewEvent(){
   return `${ui.von==='galerie'?'<button class="back" data-nav="galerie">‹ Galerie</button>':'<button class="back" data-nav="events">‹ Heute</button>'}
   <h1 class="titel">${esc(e.name||'Pizza-Abend')}</h1>
   <p class="muted">${esc(p.n)} × ${esc(r.name)}${R!==r?' ('+(KURZ[R.methode]||'').toLowerCase()+')':''}, essen am ${TAGE_LANG[p.E.getDay()]} ${dm(p.E)} um ${hm(p.E)} Uhr</p>
-  <figure class="gaerkurve">${gaerkurve(p,R)}<figcaption><span class="leg warm"></span>Raumtemperatur <span class="leg kalt"></span>Kühlschrank</figcaption></figure>
+  <figure class="gaerkurve">${gaerkurve(p,R)}${legende(e.raumtemp)}</figure>
   ${naechster(p,ni)}
   ${p.warn.map(w=>`<p class="note">${esc(w)}</p>`).join('')}
   ${sug.length?`<div class="sug"><h3>${p.nacht?'Vorschläge, damit alles tagsüber liegt':'Vorschläge, die zeitlich noch reichen'}</h3>${sug.map(c=>`<button class="sugb" data-apply="${c.D}|${c.P}"><strong>Start ${TAGE[c.t.getDay()]} ${dm(c.t)} um ${hm(c.t)}</strong><span>${esc(c.txt)}. Antippen zum Übernehmen.</span></button>`).join('')}</div>`:((p.nacht||p.past)?'<p class="small muted" style="margin-top:8px">Für dieses Rezept findet die App keine passende Variante. Wähle einen späteren Termin oder ein anderes Rezept.</p>':'')}
@@ -538,7 +540,7 @@ function viewRecipe(){
   ${prozentTabelle(p,rr)}
   <label class="fuehrung">Teigführung<select id="calcM">${methodeOptions(r,ui.calcM)}</select></label>
   <button class="btn primary breit haupt" data-new-event="${r.id}">Event damit planen</button>
-  <h2>Ablauf</h2>${gaerkurve(p,rr,{h:104})}<ol style="padding-left:20px">${p.steps.map(s=>`<li style="margin-bottom:8px"><strong>${esc(s.ttl)}</strong>${s.k==='backen'?'':' ('+span(s.min)+')'}<br><span class="muted small">${esc(s.d[s.k==='kneten'||s.k==='vorteig'?1:0])}</span></li>`).join('')}</ol>
+  <h2>Ablauf</h2><figure class="gaerkurve">${gaerkurve(p,rr,{h:104})}${legende(21)}</figure><ol style="padding-left:20px">${p.steps.map(s=>`<li style="margin-bottom:8px"><strong>${esc(s.ttl)}</strong>${s.k==='backen'?'':' ('+span(s.min)+')'}<br><span class="muted small">${esc(s.d[s.k==='kneten'||s.k==='vorteig'?1:0])}</span></li>`).join('')}</ol>
   <h2>Formen und Backen</h2><p>${esc(r.formen)}</p><p>Oben ${esc(r.oben)} °C, unten ${esc(r.unten)} °C, ${esc(r.backMin)}–${esc(r.backMax)} min pro Pizza.</p>
   ${r.notiz?`<h2>Notiz</h2><p>${esc(r.notiz)}</p>`:''}
   ${logs.length?`<h2>Backprotokolle</h2><ul class="list">${logs.map(e=>{const d=new Date(e.essen); return `<li><button class="item" data-open-event="${e.id}"><span class="when">${dm(d)}<span>${d.getFullYear()}</span></span><span>${sterne(e.log.sterne)}<br><span class="small muted">${esc(e.log.aendern||e.log.gut||e.name||'')}</span></span><span class="chev" aria-hidden="true">›</span></button></li>`;}).join('')}</ul>`:''}
